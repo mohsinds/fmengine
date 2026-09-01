@@ -22,6 +22,7 @@ dependencies = [
     "psutil>=6.0",
     "python-dotenv>=1.0",
     "pyyaml>=6.0.3",
+    "scipy>=1.18.1",
 ]
 
 [project.optional-dependencies]
@@ -98,6 +99,7 @@ dev = [
     "ipykernel>=6.0",
     "types-psutil>=6.0",
     "types-pyyaml>=6.0.12.20260815",
+    "scipy-stubs>=1.18.1.0",
 ]
 
 [tool.ruff]

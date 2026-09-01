@@ -29,6 +29,10 @@ data/features/*
 !data/features/.gitkeep
 data/executions/*
 !data/executions/.gitkeep
+data/registry/*
+!data/registry/.gitkeep
+data/holdout/*
+!data/holdout/.gitkeep
 artifacts/*
 !artifacts/.gitkeep
 download/*.csv

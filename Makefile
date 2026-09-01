@@ -1,5 +1,5 @@
 .PHONY: up down logs install check check-integration health resources \
-	ingest features sweep backtest worker campaign pause resume ui
+	ingest features sweep backtest validate noise-calibration worker campaign pause resume ui
 
 UV ?= uv
 COMPOSE ?= docker compose
@@ -60,6 +60,12 @@ backtest:
 		--params configs/strategies/buy_and_hold.yaml \
 		--dataset xauusd_1m_bid_2021-01-03_2026-08-30 \
 		--lane vectorbt
+
+validate:
+	$(UV) run fmtrader registry count
+
+noise-calibration:
+	$(UV) run fmtrader validate noise-calibration --trials 200 --bars 1500
 
 worker:
 	$(error Phase 7 not implemented yet — see SETUP_PROMPT.md)

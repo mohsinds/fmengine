@@ -31,6 +31,31 @@ from fmtrader.strategy.library import buy_and_hold as _bah  # noqa: E402, F401
 from fmtrader.strategy.library import ema_cross as _ema  # noqa: E402, F401
 
 
+def _record_trial(man: ExecutionManifest, *, source: str = "manual") -> None:
+    try:
+        from fmtrader.backtest.validation.registry import (
+            TrialRecord,
+            config_hash,
+            default_registry,
+        )
+
+        reg = default_registry()
+        reg.record(
+            TrialRecord(
+                strategy=man.strategy,
+                params=man.params,
+                config_hash=config_hash(man.strategy, man.params),
+                metrics=man.metrics_net,
+                source=source,  # type: ignore[arg-type]
+                dataset_id=man.dataset_id,
+                lane=man.lane,
+                execution_id=man.execution_id,
+            )
+        )
+    except Exception as exc:
+        log.warning("trial_registry_write_failed", error=str(exc))
+
+
 def _git_sha() -> str | None:
     try:
         import subprocess
@@ -130,6 +155,7 @@ def run_backtest(
             rec.step("cost_sensitivity", {"fragile": man.fragile})
 
         rec.complete()
+    _record_trial(man, source="sweep" if not run_sensitivity else "manual")
     log.info(
         "backtest_complete",
         execution_id=exec_id,

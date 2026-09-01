@@ -31,3 +31,11 @@ class FeatureError(FmtraderError):
 
 class BacktestError(FmtraderError):
     """Raised for backtest/cost/strategy execution failures."""
+
+
+class ValidationError(FmtraderError):
+    """Raised for validation / anti-overfitting failures."""
+
+
+class HoldoutError(ValidationError):
+    """Raised when holdout vault access is denied or already consumed."""

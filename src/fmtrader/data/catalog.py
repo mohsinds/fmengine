@@ -151,12 +151,62 @@ class Catalog:
         symbol: str,
         timeframe: str,
         columns: list[str] | None = None,
+        exclude_holdout: bool = True,
+        holdout_token: object | None = None,
+        strategy: str | None = None,
+        holdout_root: Path | None = None,
     ) -> pl.DataFrame:
+        """Read catalog bars.
+
+        By default the holdout vault (most recent ~12 months) is excluded.
+        Pass a valid ``HoldoutUnlockToken`` with ``strategy`` to read holdout
+        bars (single-use; consumable). Datasets shorter than ~12 months are
+        returned in full (no vault).
+        """
+        from fmtrader.backtest.validation.holdout import (
+            HoldoutPolicy,
+            HoldoutUnlockToken,
+            HoldoutVault,
+            split_research_holdout,
+        )
+        from fmtrader.core.errors import HoldoutError
+
         base = self.root / f"symbol={symbol}" / f"timeframe={timeframe}"
         if not base.exists():
             raise DataError(f"Catalog path not found: {base}")
-        frame = pl.read_parquet(base / "**" / "bars.parquet", columns=columns)
-        return frame.sort("ts")
+        frame = pl.read_parquet(base / "**" / "bars.parquet", columns=columns).sort("ts")
+        if frame.is_empty():
+            return frame
+
+        end = frame["ts"].max()
+        start = frame["ts"].min()
+        assert isinstance(end, datetime) and isinstance(start, datetime)
+        span_days = (end - start).total_seconds() / 86400.0
+        if span_days < 300:
+            # Synthetic / short fixtures: no holdout vault
+            if holdout_token is not None:
+                raise HoldoutError("Dataset too short to expose a holdout vault")
+            return frame
+
+        research, holdout, _ho_start = split_research_holdout(frame, policy=HoldoutPolicy())
+        if holdout_token is not None:
+            if not isinstance(holdout_token, HoldoutUnlockToken):
+                raise HoldoutError("holdout_token must be a HoldoutUnlockToken")
+            if strategy is None:
+                raise HoldoutError("strategy is required when unlocking holdout")
+            vault = HoldoutVault(holdout_root or Path("data/holdout"))
+            vault.validate_token(holdout_token, strategy=strategy)
+            vault.consume(holdout_token)
+            return holdout
+
+        if exclude_holdout:
+            return research
+
+        # Explicit full read without token is forbidden on vault-eligible datasets
+        raise HoldoutError(
+            "Holdout vault locked: pass HoldoutUnlockToken to read holdout bars "
+            "(or leave exclude_holdout=True for research-only)"
+        )
 
     def row_count(self, *, symbol: str, timeframe: str) -> int:
         return self.read(symbol=symbol, timeframe=timeframe).height

@@ -1,6 +1,10 @@
 # fmtrader — Frontend Specification
 
 **Component:** `fmtrader-web` — control and observability UI for the `fmengine` platform
+**Location:** top-level `web/` directory, sibling to `src/fmtrader/` — a separate npm/pnpm project,
+not nested inside the Python package. It talks to `src/fmtrader/api` over HTTP/SSE only; nesting a
+JS/TS app inside `src/fmtrader/` would fight both ecosystems' tooling. See `SETUP_PROMPT.md` §1 for
+the full repo layout.
 **Status:** Living document — single source of truth for the UI. This document merges what was
 previously two separate files (`FRONTEND_SPEC.md` and `REVIEW_UI_SPEC.md`); the second one produced
 a dangling "supersedes §13" reference once it existed on its own with nothing left for it to point
@@ -515,7 +519,7 @@ unreviewable result is worthless regardless of its Sharpe ratio.
 
 Build this in the backend first. The UI is a renderer for it.
 
-### 2.1 Ingredients manifest
+### 13.1 Ingredients manifest
 
 Everything that went into the execution, captured at run time — never reconstructed later.
 
@@ -615,7 +619,7 @@ environment:
   key_deps: { vectorbt: 0.27.1, nautilus_trader: 1.208.0, polars: 1.17.0 }
 ```
 
-### 2.2 Step trace
+### 13.2 Step trace
 
 An ordered, timed record of every pipeline stage. Each entry captures inputs, outputs, duration, and
 anything the stage decided.
@@ -671,7 +675,7 @@ Actions: compare · clone to Lab · promote (gated) · export record as JSON.
   states plainly what would need to change.
 
 ### Tab 2 — Ingredients
-The manifest from §2.1, rendered as collapsible sections rather than raw YAML. Each section shows what
+The manifest from §13.1, rendered as collapsible sections rather than raw YAML. Each section shows what
 was used and, where relevant, how it differs from the parent execution.
 
 - **Data** — window, bar counts, exclusions with reasons, capability flags. A link to the dataset's
@@ -691,7 +695,7 @@ The step trace as a vertical timeline. Each step expands to show inputs, outputs
 peak, and any warnings. Failed or skipped steps are visually distinct. A duration bar chart across
 steps makes bottlenecks obvious.
 
-### Tab 4 — Performance *(detailed in §4)*
+### Tab 4 — Performance *(detailed in §15)*
 
 ### Tab 5 — Trades
 Virtualized table: entry/exit time and price, side, size, gross P&L, costs broken out, net P&L,
@@ -703,7 +707,7 @@ Per-fold CV results, per-window walk-forward results, regime segmentation, the D
 computation with its trial-count input shown explicitly, and the robustness checks (top-5-trade
 removal, session split, parameter neighborhood).
 
-### Tab 7 — Agent trace *(agent-sourced executions only, detailed in §5)*
+### Tab 7 — Agent trace *(agent-sourced executions only, detailed in §16)*
 
 ---
 
@@ -711,7 +715,7 @@ removal, session split, parameter neighborhood).
 
 A dedicated tab, because "did this work" has more dimensions than a Sharpe ratio.
 
-### 4.1 Outcome summary
+### 15.1 Outcome summary
 | Metric | Note |
 |---|---|
 | Total trades · wins · losses · scratches | |
@@ -726,12 +730,12 @@ A dedicated tab, because "did this work" has more dimensions than a Sharpe ratio
 > winning 85% of trades while losing 6× on each loss is a losing strategy. The UI pairs win rate with
 > expectancy in the same visual unit so the two are never read apart.
 
-### 4.2 Streaks & sequencing
+### 15.2 Streaks & sequencing
 Longest win streak · longest loss streak · current streak distribution vs what a coin flip with the
 same win rate would produce. Large deviation suggests serial dependence — which can be edge or can be
 a regime artifact, and either way is worth knowing.
 
-### 4.3 Distributions
+### 15.3 Distributions
 - Trade P&L histogram, net, with the tails highlighted
 - Trade duration histogram — for scalping, a long right tail often means stops aren't binding
 - **MAE / MFE scatter** — maximum adverse vs maximum favorable excursion per trade. The single best
@@ -739,7 +743,7 @@ a regime artifact, and either way is worth knowing.
   boundary means you are getting lucky, not right.
 - R-multiple distribution
 
-### 4.4 Breakdowns
+### 15.4 Breakdowns
 Every one of these renders as a small-multiples grid of the same metric set:
 
 - **By session** — Asia / London / NY / off-hours. Gold behaves very differently across these.
@@ -753,7 +757,7 @@ Every one of these renders as a small-multiples grid of the same metric set:
 - **Long vs short** — an edge that exists only on one side is a real finding, not a bug, but it
   changes deployment
 
-### 4.5 Attribution
+### 15.5 Attribution
 - **Cost attribution** — spread vs commission vs slippage as a share of gross P&L, and per trade
 - **Top-trade dependence** — cumulative P&L with the top 1/5/10 trades removed, side by side
 - **Time-to-profit** — how P&L accumulated; a curve that is flat for four years and vertical for two
@@ -817,7 +821,7 @@ able to walk the chain and see exactly which parameter change caused which metri
 
 ## 18. API additions
 
-Beyond the contract in `FRONTEND_SPEC.md` §7:
+Beyond the contract in §7 above:
 
 ```
 GET  /api/executions                        filter: campaign, generation, strategy, verdict, source

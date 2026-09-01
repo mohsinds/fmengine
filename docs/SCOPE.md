@@ -94,7 +94,7 @@ treats honest cost modeling as a first-class correctness concern.
 - Optional sentiment and news feature providers
 - Multi-asset portfolio construction
 - Broker integrations for paper and live execution
-- Web UI beyond the Streamlit prototype
+- The Next.js review UI (§6.15) — the disposable internal Streamlit script used earlier is not a prototype of it and shares no code with it
 
 ### Out of scope — deliberately
 | Excluded | Reason |
@@ -152,7 +152,7 @@ These are the rules that make the system extensible. Violating one is not a shor
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│  PRESENTATION        Streamlit dashboard · FastAPI · Temporal UI ·    │
+│  PRESENTATION        Next.js UI (Ph.11) · FastAPI · Temporal UI ·      │
 │                      MLflow · research journal (Markdown)             │
 ├──────────────────────────────────────────────────────────────────────┤
 │  ORCHESTRATION       Temporal workflows · durable campaigns ·         │
@@ -325,7 +325,7 @@ Status legend: `PLANNED` · `IN PROGRESS` · `BUILT` · `DEFERRED` · `BLOCKED`
 | **Purpose** | Make campaign state, results, and reasoning legible to a human |
 | **Owns** | FastAPI endpoints (runs, experiments, journal, campaign control), the Next.js review UI, journal Markdown rendering |
 | **Design rule** | The UI is a client of the API, never a monolith. The FastAPI contract is frozen at the end of Phase 5 so UI work never blocks on backend churn |
-| **Interim tool** | A disposable Streamlit script may be used **internally, Phases 1–5 only**, to eyeball ingestion/feature/backtest output while those layers are being built. It is not tested, not specified, not part of any deliverable, and is deleted once Phase 11 ships. See `FRONTEND_SPEC.md` §3 |
+| **Interim tool** | A disposable Streamlit script may be used **internally, Phases 2–5 only**, to eyeball ingestion/feature/backtest output while those layers are being built. It is not tested, not specified, not part of any deliverable, and is deleted once Phase 11 ships. See `FRONTEND_SPEC.md` §3 |
 | **Phase** | 11 · **Status:** `PLANNED` |
 
 ---
@@ -335,7 +335,7 @@ Status legend: `PLANNED` · `IN PROGRESS` · `BUILT` · `DEFERRED` · `BLOCKED`
 ### Asset class roadmap
 | Asset class | Instruments | Vendor | Phase | Status |
 |---|---|---|---|---|
-| Spot gold (CFD) | XAUUSD | Dukascopy (free) | 1–7 | Active |
+| Spot gold (CFD) | XAUUSD | Dukascopy (free) | 1–8 | Active |
 | CME metals futures | GC, MGC, SI, HG | Databento / Barchart | 9 | Planned |
 | US equities | Liquid large-cap universe | Polygon / Databento + fundamentals vendor | Later | Planned |
 | Crypto | BTC, ETH spot + perps | CCXT / exchange APIs | Later | Planned |
@@ -532,7 +532,9 @@ re-runnable to identical output.
 
 ### Observability
 structlog JSON logging with `run_id` / `campaign_id` correlation · MLflow for run tracking and
-comparison · Temporal UI for campaign state · Streamlit dashboard for results and journal.
+comparison · Temporal UI for campaign state · the Next.js review UI (Phase 11, `FRONTEND_SPEC.md`)
+for results and journal rendering. A disposable, unspecified Streamlit script may be used internally
+during Phases 2–5 to eyeball intermediate output — see §6.15 — but it is not this deliverable.
 
 ### Security
 Credentials in `.env` and never committed · broker credentials never in agent-reachable context ·
@@ -685,7 +687,7 @@ Format: context · options considered · decision · consequences · date.
 | 0007 | Holdout vault enforced in code, not by convention | Human discipline reliably fails against the temptation to peek |
 | 0008 | Start with a single instrument end-to-end | Proves the pipeline before multiplying surface area |
 | 0009 | Provider framework (Phase 6) built before the agentic pipeline (Phase 7), ahead of any concrete vendor | Concrete news/fundamentals vendors remain a later, separate decision (open questions 7–8), but the pluggable interface must exist before the agent's search space is designed, or the search space needs a mid-project redesign |
-| 0010 | The Next.js app in `FRONTEND_SPEC.md`, not Streamlit, is the only specified UI deliverable | Streamlit is disposable internal tooling for Phases 1–5; specifying two production UIs invited exactly the drift this decision closes off — see resolved open question 4 |
+| 0010 | The Next.js app in `FRONTEND_SPEC.md`, not Streamlit, is the only specified UI deliverable | Streamlit is disposable internal tooling for Phases 2–5; specifying two production UIs invited exactly the drift this decision closes off — see resolved open question 4 |
 
 ---
 
@@ -696,7 +698,7 @@ Format: context · options considered · decision · consequences · date.
 | 1 | Primary broker for paper and live — IBKR, or a futures specialist (Tradovate/Rithmic)? | Phase 10 adapter priority | Open |
 | 2 | Weekly USD budget cap for frontier LLM calls | Phase 7 governor configuration | Open |
 | 3 | GC ($10/tick) or MGC ($1/tick) as the live target? | Phase 8 position sizing realism | Open |
-| 4 | ~~Streamlit sufficient through Phase 5, or is a richer UI needed earlier?~~ | — | **Resolved:** Streamlit is a disposable internal tool for Phases 1–5 only — not tested, not specified, no promotion path. The Next.js app in `FRONTEND_SPEC.md` is the only specified deliverable, built in Phase 11. See §14 extension playbooks note and `FRONTEND_SPEC.md` §3 |
+| 4 | ~~Streamlit sufficient through Phase 5, or is a richer UI needed earlier?~~ | — | **Resolved:** Streamlit is a disposable internal tool for Phases 2–5 only — not tested, not specified, no promotion path. The Next.js app in `FRONTEND_SPEC.md` is the only specified deliverable, built in Phase 11. See §14 extension playbooks note and `FRONTEND_SPEC.md` §3 |
 | 5 | Timeline and trigger for acquiring paid CME data | Phase 9 start | Open |
 | 6 | Is vectorbt open-source sufficient, or will the Pro version be needed? | Phase 4 — revisit only if the fast lane becomes a measured bottleneck | Deferred |
 | 7 | Which sentiment/news vendor, and at what budget? | Concrete provider behind the Phase 6 framework — see `PROVIDER_ARCHITECTURE.md` §5 | Deferred |

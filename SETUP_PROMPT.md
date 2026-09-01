@@ -53,6 +53,13 @@ fmengine/
 │   ├── nautilus/                  # NautilusTrader ParquetDataCatalog
 │   └── snapshots/                 # dataset manifests (hash + metadata)
 ├── artifacts/                     # gitignored: run outputs, models, reports
+├── web/                           # fmtrader-web — the Next.js review UI (Phase 11).
+│                                   # Top-level, sibling to src/, NOT nested inside the Python
+│                                   # package. It's a separate npm/pnpm project with its own
+│                                   # package.json, talking to src/fmtrader/api over HTTP —
+│                                   # nesting a JS/TS app inside src/fmtrader/ would fight both
+│                                   # ecosystems' tooling (uv resolving node_modules, ESLint
+│                                   # crawling Python files, etc). See FRONTEND_SPEC.md.
 ├── src/fmtrader/
 │   ├── __init__.py
 │   ├── config/                    # pydantic-settings, typed config trees
@@ -107,9 +114,9 @@ fmengine/
 │   │   ├── brokers/               # ibkr.py, (later) tradovate.py, ccxt.py
 │   │   └── paper.py
 │   ├── api/                       # FastAPI: runs, experiments, journal, control
-│   └── ui/                        # Next.js review app (Phase 11). A disposable, unspecified
-│                                   # Streamlit script may live here temporarily for internal use
-│                                   # during Phases 1–5 only — see FRONTEND_SPEC.md §3.
+│   └── ui/                        # Disposable, unspecified internal Streamlit script only —
+│                                   # Phases 2–5, deleted after. The real UI lives in the
+│                                   # top-level web/ directory, not here — see above.
 ├── tests/
 │   ├── unit/
 │   ├── property/                  # hypothesis-based invariants
@@ -139,7 +146,10 @@ Add via `uv add`. Group them in `pyproject.toml` optional-dependency groups so a
 **agents:** `langgraph`, `langchain-core`, `langchain-anthropic`, `langchain-openai`, `langchain-google-genai`, `ollama`, `langsmith`
 **orchestration:** `temporalio`, `redis`
 **tracking:** `mlflow`, `psycopg[binary]`, `sqlalchemy`, `alembic`
-**api/ui:** `fastapi`, `uvicorn`, `streamlit`, `plotly`
+**api:** `fastapi`, `uvicorn`
+**dev-viz (optional, disposable):** `streamlit`, `plotly` — only if you use the internal throwaway
+script from §1's `ui/` note. Not a formal deliverable dependency group; keep it out of `api` so
+removing it later (once Phase 11's `web/` app exists) doesn't touch a real module's dependencies.
 **dev:** `pytest`, `pytest-cov`, `hypothesis`, `ruff`, `mypy`, `pre-commit`, `ipykernel`
 
 > **Apple Silicon note:** verify `vectorbt` and `nautilus_trader` wheels install cleanly on arm64/Python 3.12. If `vectorbt` fights the Numba version, pin Numba to the version its release notes specify and record the pin with a comment explaining why. If `nautilus_trader` needs a Rust toolchain, install via `rustup`.
@@ -436,12 +446,13 @@ end-to-end on futures data and its verdict is reported (even if it changes).
 - **Temporal UI** for campaign state, pause/resume control.
 - **FastAPI** endpoints implementing the contract frozen at the end of Phase 5 — the UI is a client
   of the API, never a monolith.
-- **Next.js review app** per `FRONTEND_SPEC.md` (which incorporates the execution-review content
-  formerly split into a separate `REVIEW_UI_SPEC.md` — that split is resolved; there is one UI spec
+- **Next.js review app**, at the top-level `web/` directory (sibling to `src/`, its own npm/pnpm
+  project — see the repo layout in §1) per `FRONTEND_SPEC.md` (which incorporates the execution-review
+  content formerly split into a separate `REVIEW_UI_SPEC.md` — that split is resolved; there is one UI spec
   now). This is the only specified, tested UI deliverable in the project.
 
 **Do not build a Streamlit app as part of this phase.** If a disposable internal Streamlit script
-was used during Phases 1–5 to eyeball intermediate output, delete it once this phase ships — it was
+was used during Phases 2–5 to eyeball intermediate output, delete it once this phase ships — it was
 never a specified deliverable and has no test coverage.
 
 ---

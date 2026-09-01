@@ -1,0 +1,4 @@
+name: ema_cross
+grid:
+  fast: [5, 8, 12, 20]
+  slow: [20, 26, 50, 100]

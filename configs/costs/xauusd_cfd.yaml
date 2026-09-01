@@ -1,0 +1,12 @@
+# Conservative XAUUSD CFD cost assumptions (bid-only dataset: spread unmeasured).
+# Spread ~$0.30 on gold (~3 cents) is a starting point — never zero.
+spread_abs: 0.30
+commission_per_side: 0.0
+commission_bps: 0.5
+slippage_base_abs: 0.05
+slippage_vol_mult: 0.05
+offsession_spread_mult: 1.5
+order_type: market
+limit_slippage_factor: 0.25
+funding_bps_per_day: 0.0
+multiplier: 1.0

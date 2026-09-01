@@ -47,10 +47,19 @@ features:
 		--set configs/features/baseline.yaml
 
 sweep:
-	$(error Phase 4 not implemented yet — see SETUP_PROMPT.md)
+	$(UV) run fmtrader backtest sweep \
+		--strategy ema_cross \
+		--space configs/spaces/ema_cross.yaml \
+		--dataset xauusd_1m_bid_2021-01-03_2026-08-30 \
+		--max 200 \
+		--workers 6
 
 backtest:
-	$(error Phase 4 not implemented yet — see SETUP_PROMPT.md)
+	$(UV) run fmtrader backtest run \
+		--strategy buy_and_hold \
+		--params configs/strategies/buy_and_hold.yaml \
+		--dataset xauusd_1m_bid_2021-01-03_2026-08-30 \
+		--lane vectorbt
 
 worker:
 	$(error Phase 7 not implemented yet — see SETUP_PROMPT.md)

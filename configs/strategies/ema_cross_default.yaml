@@ -1,0 +1,4 @@
+name: ema_cross
+params:
+  fast: 12
+  slow: 26

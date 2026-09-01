@@ -19,11 +19,15 @@ system_app = typer.Typer(help="Infrastructure health and resource probes.")
 app.add_typer(system_app, name="system")
 
 # Lazily import data CLI to keep `system` commands light
+from fmtrader.backtest.cli import backtest_app  # noqa: E402
 from fmtrader.data.cli import data_app  # noqa: E402
+from fmtrader.execution.cli import execution_app  # noqa: E402
 from fmtrader.features.cli import features_app  # noqa: E402
 
 app.add_typer(data_app, name="data")
 app.add_typer(features_app, name="features")
+app.add_typer(backtest_app, name="backtest")
+app.add_typer(execution_app, name="execution")
 
 console = Console()
 

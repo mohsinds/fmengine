@@ -27,3 +27,7 @@ class AdapterError(DataError):
 
 class FeatureError(FmtraderError):
     """Raised for feature/indicator/labeling failures (capability, lookback, YAML)."""
+
+
+class BacktestError(FmtraderError):
+    """Raised for backtest/cost/strategy execution failures."""

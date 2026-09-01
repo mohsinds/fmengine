@@ -1,0 +1,138 @@
+                                                                                                                                                   # fmengine local infrastructure stack
+# Memory limits are deliberate: total capped ~6GB to leave room for Ollama + backtest workers
+# on a 24GB machine. Ollama runs natively on macOS (Metal GPU), NOT in Docker.
+
+name: fmengine
+
+services:
+  questdb:
+    image: questdb/questdb:8.2.1
+    container_name: fm-questdb
+    ports:
+      - "9000:9000"   # web console + REST
+      - "8812:8812"   # postgres wire protocol
+      - "9009:9009"   # InfluxDB line protocol ingest
+    environment:
+      QDB_PG_USER: ${QUESTDB_USER:-admin}
+      QDB_PG_PASSWORD: ${QUESTDB_PASSWORD:-quest}
+      # Keep QuestDB's own memory footprint predictable
+      QDB_SHARED_WORKER_COUNT: "4"
+      QDB_CAIRO_SQL_COPY_ROOT: /var/lib/questdb/import
+    volumes:
+      - questdb_data:/var/lib/questdb
+      - ./data/catalog:/var/lib/questdb/import:ro
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/status || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: fm-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fmtrader}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fmtrader}
+      POSTGRES_MULTIPLE_DATABASES: fmtrader,temporal,temporal_visibility,mlflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh:ro
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fmtrader}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  temporal:
+    image: temporalio/auto-setup:1.25.2
+    container_name: fm-temporal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "7233:7233"
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-fmtrader}
+      POSTGRES_PWD: ${POSTGRES_PASSWORD:-fmtrader}
+      POSTGRES_SEEDS: postgres
+      DBNAME: temporal
+      VISIBILITY_DBNAME: temporal_visibility
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    restart: unless-stopped
+
+  temporal-ui:
+    image: temporalio/ui:2.32.0
+    container_name: fm-temporal-ui
+    depends_on:
+      - temporal
+    ports:
+      - "8233:8080"
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: fm-redis
+    command: redis-server --maxmemory 384mb --maxmemory-policy allkeys-lru --save ""
+    ports:
+      - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.19.0
+    container_name: fm-mlflow
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5001:5000"
+    command: >
+      sh -c "pip install --no-cache-dir psycopg2-binary &&
+             mlflow server
+             --host 0.0.0.0 --port 5000
+             --backend-store-uri postgresql://${POSTGRES_USER:-fmtrader}:${POSTGRES_PASSWORD:-fmtrader}@postgres:5432/mlflow
+             --default-artifact-root /mlflow/artifacts"
+    volumes:
+      - mlflow_artifacts:/mlflow/artifacts
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    restart: unless-stopped
+
+volumes:
+  questdb_data:
+  postgres_data:
+  mlflow_artifacts:

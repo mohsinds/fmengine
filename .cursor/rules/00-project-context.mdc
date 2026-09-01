@@ -1,0 +1,38 @@
+---
+description: Core project context for fmengine / fmtrader. Always applied.
+alwaysApply: true
+---
+
+# fmengine — project context
+
+**Repo:** `fmengine`. **Python solution:** `fmtrader` (FinnMetrics, finnmetrics.com).
+A production-grade quantitative research and execution engine.
+
+## Current scope vs future scope
+- **Now:** Gold — XAUUSD 1-minute bars, Dukascopy free data, bid side only, 2021-01-01 → 2026-08-31.
+- **Next:** CME GC / MGC gold futures via Databento (real volume, open interest, contract rolls).
+- **Later:** Crypto, US equities (with point-in-time fundamentals), FX.
+
+Never hardcode gold, never hardcode futures semantics, never hardcode a broker. New asset classes
+and vendors arrive as **adapters** behind stable interfaces. If a change to core code is needed to
+add an asset class, the abstraction was wrong — say so instead of hacking around it.
+
+## Machine budget (Apple M5 Pro, 24 GB unified memory, 15 cores)
+Memory is the binding constraint. Respect these ceilings:
+- Docker stack ≤ 6 GB · Ollama ≤ 8 GB · backtest workers ≤ 6 GB · OS/IDE headroom ≥ 4 GB
+- Default parallel backtest workers: **6**. Make it configurable, never hardcoded.
+- Only one 14B local model resident at a time, and never during a large sweep.
+- Prefer streaming / memory-mapped Parquet over loading full datasets into RAM.
+
+## Architectural invariants
+1. **One canonical bar contract** (`core/contracts.py`) flows through the whole system.
+2. **Two backtest lanes:** vectorbt (fast triage) → NautilusTrader (fidelity). Nothing is ever
+   validated on the vectorbt lane alone.
+3. **No LLM in the live path.** LLMs are offline research only, never between tick and order.
+4. **Every run is reproducible:** dataset content hash + config hash + git SHA + seed, or the run is invalid.
+5. **Risk lives between signal and execution**, never inside strategy code.
+6. **The holdout vault is sacred.** Agents and sweeps cannot read it. One evaluation per strategy, ever.
+
+## Tone for responses to the user
+Direct and concise. Bullets over prose. State assumptions explicitly. If a request would violate an
+invariant above, say so plainly and propose the correct alternative rather than complying silently.

@@ -1,0 +1,44 @@
+---
+description: Python engineering standards for fmtrader source code.
+globs: ["src/**/*.py", "tests/**/*.py"]
+alwaysApply: false
+---
+
+# Python standards
+
+## Baseline
+- Python 3.12. `uv` for dependency management — never `pip install` into the project env directly.
+- `ruff` (lint + format) and `mypy --strict` on `src/`. Both must pass before any phase is reported done.
+- Full type annotations on every public function. No bare `Any` without an inline comment justifying it.
+
+## Data handling
+- **Polars** for bulk transforms and IO. Convert to pandas only at library boundaries that demand it
+  (vectorbt), and convert back immediately after.
+- Parquet is the storage format. Partition by `symbol/timeframe/year/month`.
+- All datetimes are **timezone-aware UTC**. A naive datetime anywhere in `src/` is a bug.
+- Money and prices: `float` is acceptable for research; never use float for accumulating account
+  balances in the execution layer — use `Decimal` there.
+
+## Structure
+- Pure functions by default. Side effects (IO, network, DB) isolated in clearly named modules.
+- Configuration via `pydantic-settings` typed models loaded from YAML + `.env`. No magic constants
+  scattered in code — if a number affects results, it belongs in config.
+- Logging via `structlog`, JSON output, always carrying `run_id` / `campaign_id` correlation fields.
+- CLI via `typer`, exposed as `fmtrader <group> <command>`.
+
+## Errors
+- Fail loudly and early. Silent NaN propagation, silent empty-frame returns, and bare `except:` are forbidden.
+- Custom exception hierarchy in `core/errors.py`. Every raised error carries actionable context
+  (which dataset, which config, which field).
+
+## Testing
+- `pytest`. Unit tests for pure logic, `hypothesis` property tests for numerical invariants,
+  integration tests for anything touching Docker services (marked and skippable).
+- Every indicator gets: a correctness test against a hand-computed or reference value, an NaN-warmup
+  test, and an insufficient-lookback test.
+- Any bug fix starts with a failing test that reproduces it.
+
+## Performance
+- Profile before optimizing; state the measured numbers in the report.
+- Vectorize first, `numba` second, Rust/Cython only with a demonstrated bottleneck.
+- Chunk large sweeps. Never materialize a full parameter cartesian product in memory.

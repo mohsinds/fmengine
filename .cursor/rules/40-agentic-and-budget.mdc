@@ -1,0 +1,49 @@
+---
+description: Rules for the agentic research pipeline, LLM routing, and cost control.
+globs: ["src/fmtrader/agents/**/*.py", "src/fmtrader/orchestration/**/*.py"]
+alwaysApply: false
+---
+
+# Agentic pipeline rules
+
+## Durability
+Long campaigns (a week or more) run as **Temporal workflows**, not as a Python loop in a terminal.
+Requirements: survives restarts and machine sleep · `pause` / `resume` / `adjust_budget` / `abort`
+signals · durable checkpoints after every generation · full state visible in the Temporal UI.
+
+## What the agent may and may not do
+**May:** propose structured strategy configs against a declared search-space schema · propose new
+feature-set YAML · critique results · summarize a generation · write journal rationale · recommend
+the next generation's search space.
+
+**May not:**
+- read or query the **holdout vault** — enforced in code, not by prompt
+- write directly to the trial registry (validated activities do that)
+- emit free-form Python that gets `exec`'d — proposals are **validated structured configs only**
+- influence the live execution path in any way
+- disable, weaken, or route around validation gates (DSR, PBO, purging, cost sensitivity)
+
+If a proposal fails schema validation, reject it and log the failure. Do not "repair" it silently.
+
+## LLM routing
+- **Tier L (local, Ollama, free):** bulk hypothesis generation, config mutation, deduplication,
+  summarization. This carries the volume.
+- **Tier F (frontier: Claude / OpenAI / Gemini, paid):** gating decisions only — shortlist critique,
+  genuinely novel direction proposals, end-of-generation review, final human-facing report.
+
+Before loading a local model, check available system memory and fall back to the 7B model under
+pressure. Never load a 14B model while a large sweep is running.
+
+## Budget governor
+- Hard USD caps: per campaign, per generation, per day, per provider.
+- Estimate cost **before** each Tier F call; refuse the call if it would breach a cap.
+- Ledger every call (provider, model, tokens in/out, USD, purpose, campaign_id) to Postgres.
+- On exhaustion: degrade gracefully to Tier L and continue the campaign. Never crash, never silently
+  overspend, never "just this once" past the cap.
+
+## The research journal
+Every generation writes a human-readable entry containing: hypothesis, exact parameters tried,
+resulting metrics (net-of-cost, with DSR and trial count), which candidates survived and why,
+what the next search space is and the reasoning behind it, and cumulative spend.
+
+This journal is the primary artifact a human reads. Write it for a reader who was not watching.

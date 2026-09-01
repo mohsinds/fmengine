@@ -1,0 +1,52 @@
+---
+description: Quantitative correctness rules — leakage, costs, validation, overfitting. Always applied.
+alwaysApply: true
+---
+
+# Quant correctness — non-negotiable
+
+These rules exist because the failure mode of this project is not a crash. It is a backtest that
+looks profitable, passes review, and loses money live. Treat every one of these as a blocking check.
+
+## Look-ahead bias
+- A feature at bar `t` may only use information available at or before `t`. When in doubt, shift.
+- Bar timestamps are **bar-open** time. Any indicator computed from a bar's close is available only
+  from the *next* bar onward for decision-making. Enforce this in the backtest harness, not by convention.
+- Rolling statistics must not include the current bar's future. `center=True` windows are forbidden.
+- Fills happen at the *next* bar's price (or with explicit intrabar modeling), never at the signal bar's close.
+- News/sentiment features may only use items whose **publication timestamp** precedes the bar.
+- Fundamentals must be **point-in-time as-reported**, never restated.
+
+## Cost realism
+- Every reported result carries both gross and **net-of-cost** metrics. A gross-only result is incomplete.
+- Cost model = spread + commission + slippage, per instrument and per session. Off-session spreads widen.
+- The XAUUSD bid-only dataset has **no measured spread** — use a conservative constant from config, never zero.
+- Run cost sensitivity at 1.0×, 1.5×, 2.0×. If the edge dies at 1.5×, mark the strategy `fragile`.
+- Report **cost drag as a percentage of gross P&L**. For scalping this is the number that kills strategies.
+
+## Data-availability gating
+- The current dataset has **no volume column** (`has_volume: false`).
+- Any strategy or feature requesting a volume-dependent indicator (VWAP, OBV, MFI, volume profile,
+  cumulative delta, Hawkes on trade arrivals) on this dataset must **raise a clear error**, not return NaN.
+- Same rule for spread-, order-book-, and open-interest-dependent features.
+
+## Validation
+- Cross-validation is **purged and embargoed**. Plain K-fold on time series is a bug.
+- Walk-forward analysis is mandatory before any strategy is called viable. Report per-window metrics.
+- Report performance **segmented by regime** (2021, 2022, 2023–24, 2025–26). Single-regime edges get labeled.
+- Label overlap must be handled with sample weights based on label uniqueness.
+
+## Overfitting control
+- **Every** evaluated configuration is written to the trial registry. No exceptions — the trial count
+  is the denominator for multiple-testing correction.
+- Report **Deflated Sharpe Ratio** and **PBO (CSCV)** alongside raw Sharpe. A high raw Sharpe from a
+  10,000-config sweep means close to nothing on its own.
+- The **holdout vault** (most recent ~12 months) is unreadable without an explicit unlock token.
+  Unlocking is logged and irreversible per strategy. One holdout evaluation per strategy, ever.
+- Beware selection on the same data used for tuning. Search space refinement is itself a form of fitting —
+  count it in the trial registry.
+
+## When reporting results
+State plainly: trial count, DSR, PBO, cost drag, regime breakdown, and whether holdout was consumed.
+Never present a Sharpe ratio without that context. If results look too good, say so and investigate
+for leakage before celebrating.

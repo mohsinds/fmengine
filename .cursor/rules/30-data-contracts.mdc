@@ -1,0 +1,47 @@
+---
+description: Data layer contracts, adapters, snapshots, and quality gates.
+globs: ["src/fmtrader/data/**/*.py", "src/fmtrader/core/contracts.py", "src/fmtrader/features/**/*.py"]
+alwaysApply: false
+---
+
+# Data contracts
+
+## Canonical bar
+Every vendor, asset class, and timeframe normalizes to one schema before touching anything downstream:
+
+`ts` (tz-aware UTC, bar-open) · `symbol` · `instrument_class` · `timeframe` ·
+`open` `high` `low` `close` · `volume?` · `open_interest?` · `bid?` · `ask?`
+
+`instrument_class` ∈ `spot_cfd | futures_raw | futures_continuous | equity | crypto`.
+
+Optional fields are `None` when the vendor does not supply them — never `0`, never silently imputed.
+
+## Adapters
+An adapter's only job is `vendor format → canonical bars + a source manifest`. Adapters:
+- do not compute indicators
+- do not filter or "clean" data beyond documented, logged normalization
+- declare their capabilities (`has_volume`, `has_spread`, `has_open_interest`, session calendar)
+
+Current: `dukascopy`. Planned: `databento` (CME), `ccxt` (crypto), `ibkr`, `polygon` (equities).
+
+## Dukascopy XAUUSD specifics
+- `timestamp` is **epoch milliseconds UTC**.
+- File is **bid side only** and carries **no volume**. Manifest must record `has_volume: false`,
+  `has_spread: false`, `side: bid`.
+- Download the ask side separately to derive spread; until then cost models use a config constant.
+- Repeated identical OHLC values indicate no-tick periods (weekends/holidays/illiquid hours).
+  Detect, flag, and exclude from tradable bars — do not let a strategy transact in them.
+
+## Quality gate — runs on every ingest, hard-fails on structural problems
+Monotonic non-duplicate timestamps · OHLC invariants (`low ≤ min(o,c)`, `high ≥ max(o,c)`, all > 0) ·
+gap classification against the session calendar (weekend / holiday / rollover / anomalous) ·
+MAD-based return outlier flags · flat-bar run counts · monthly coverage table.
+
+## Snapshots
+Every ingest writes `data/snapshots/<dataset_id>.json` with a `content_hash`. Every backtest result
+references a `dataset_id` + `content_hash`. A result without one is rejected at write time.
+
+## Futures readiness
+`data/contracts.py` holds the continuous-series interface (back-adjusted/Panama, ratio-adjusted,
+unadjusted) and roll rules (volume crossover, OI crossover, fixed days-to-expiry). For XAUUSD it is a
+pass-through. Keep the seam intact so CME onboarding is adapter + config only.

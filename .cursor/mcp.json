@@ -1,0 +1,63 @@
+{
+  "mcpServers": {
+    "postgres-fmtrader": {
+      "command": "uvx",
+      "args": [
+        "postgres-mcp",
+        "--access-mode=restricted"
+      ],
+      "env": {
+        "DATABASE_URI": "postgresql://fmtrader:fmtrader@localhost:5432/fmtrader"
+      }
+    },
+    "questdb": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-postgres"
+      ],
+      "env": {
+        "DATABASE_URI": "postgresql://admin:quest@localhost:8812/qdb"
+      }
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "${workspaceFolder}/src",
+        "${workspaceFolder}/tests",
+        "${workspaceFolder}/data/snapshots",
+        "${workspaceFolder}/artifacts",
+        "${workspaceFolder}/docs"
+      ]
+    },
+    "git": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-git",
+        "--repository",
+        "${workspaceFolder}"
+      ]
+    },
+    "fetch": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-fetch"
+      ]
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ]
+    },
+    "context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
+      ]
+    }
+  }
+}

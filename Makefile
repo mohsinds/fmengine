@@ -68,16 +68,18 @@ noise-calibration:
 	$(UV) run fmtrader validate noise-calibration --trials 200 --bars 1500
 
 worker:
-	$(error Phase 7 not implemented yet — see SETUP_PROMPT.md)
+	$(UV) run fmtrader worker start
 
 campaign:
-	$(error Phase 7 not implemented yet — see SETUP_PROMPT.md)
+	$(UV) run fmtrader campaign new --config configs/campaigns/trial_short.yaml --local
 
 pause:
-	$(error Phase 7 not implemented yet — see SETUP_PROMPT.md)
+	@test -n "$(ID)" || (echo "Usage: make pause ID=<campaign_id>"; exit 1)
+	$(UV) run fmtrader campaign pause $(ID)
 
 resume:
-	$(error Phase 7 not implemented yet — see SETUP_PROMPT.md)
+	@test -n "$(ID)" || (echo "Usage: make resume ID=<campaign_id>"; exit 1)
+	$(UV) run fmtrader campaign resume $(ID)
 
 ui:
 	$(error Phase 11 not implemented yet — see FRONTEND_SPEC.md)

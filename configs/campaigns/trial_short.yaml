@@ -1,0 +1,18 @@
+# Short local trial — for CI / Phase 7 verification (not the 24h soak).
+name: trial_short
+dataset_id: xauusd_1m_bid_2021-01-03_2026-08-30
+strategy: ema_cross
+space_path: configs/spaces/ema_cross.yaml
+max_generations: 2
+proposals_per_generation: 3
+shortlist_size: 1
+max_sweep_configs: 10
+workers: 2
+max_bars: 3000
+run_fidelity: false
+use_stub_llm: true
+seed: 0
+budget:
+  per_campaign_usd: 1.0
+  per_day_usd: 1.0
+  per_generation_usd: 0.5

@@ -1,0 +1,20 @@
+# 24-hour trial campaign configuration (human soak test).
+# Start with: fmtrader campaign new --config configs/campaigns/trial_24h.yaml --temporal
+# Requires: make up, fmtrader worker start, optional real LLM keys.
+name: trial_24h
+dataset_id: xauusd_1m_bid_2021-01-03_2026-08-30
+strategy: ema_cross
+space_path: configs/spaces/ema_cross.yaml
+max_generations: 48
+proposals_per_generation: 8
+shortlist_size: 3
+max_sweep_configs: 50
+workers: 6
+max_bars: 20000
+run_fidelity: false
+use_stub_llm: true
+seed: 0
+budget:
+  per_campaign_usd: 25.0
+  per_day_usd: 10.0
+  per_generation_usd: 2.0

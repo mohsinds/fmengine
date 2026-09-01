@@ -94,6 +94,7 @@ def run_backtest(
     qty: float = 1.0,
     run_sensitivity: bool = True,
     max_bars: int | None = None,
+    source: str = "manual",
 ) -> ExecutionManifest:
     snap = SnapshotManifest.load(snapshots_dir / f"{dataset_id}.json")
     validate_cost_config_for_dataset(cost_cfg, has_spread=snap.has_spread, dataset_id=dataset_id)
@@ -155,7 +156,10 @@ def run_backtest(
             rec.step("cost_sensitivity", {"fragile": man.fragile})
 
         rec.complete()
-    _record_trial(man, source="sweep" if not run_sensitivity else "manual")
+    trial_source = source
+    if trial_source == "manual" and not run_sensitivity:
+        trial_source = "sweep"
+    _record_trial(man, source=trial_source)
     log.info(
         "backtest_complete",
         execution_id=exec_id,

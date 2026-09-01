@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     mlflow_url: str = Field(default="http://localhost:5001")
     ollama_url: str = Field(default="http://localhost:11434")
 
+    # LLM budget caps (USD) — Phase 7 governor; empty env → 0 (local-only)
+    llm_budget_per_campaign_usd: float = Field(default=0.0)
+    llm_budget_per_day_usd: float = Field(default=0.0)
+    llm_budget_per_generation_usd: float = Field(default=0.0)
+    anthropic_api_key: str = Field(default="")
+    openai_api_key: str = Field(default="")
+    gemini_api_key: str = Field(default="")
+
     # Memory budget (GB) — see ADR 0001
     memory_budget_total_gb: float = Field(default=24.0)
     memory_budget_docker_gb: float = Field(default=6.0)
@@ -62,6 +70,18 @@ class Settings(BaseSettings):
     def _strip_str(cls, value: object) -> object:
         if isinstance(value, str):
             return value.strip()
+        return value
+
+    @field_validator(
+        "llm_budget_per_campaign_usd",
+        "llm_budget_per_day_usd",
+        "llm_budget_per_generation_usd",
+        mode="before",
+    )
+    @classmethod
+    def _empty_budget_to_zero(cls, value: object) -> object:
+        if value is None or value == "":
+            return 0.0
         return value
 
     def require_infra_credentials(self) -> None:

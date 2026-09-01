@@ -33,6 +33,12 @@ data/registry/*
 !data/registry/.gitkeep
 data/holdout/*
 !data/holdout/.gitkeep
+data/campaigns/*
+!data/campaigns/.gitkeep
+data/journals/*
+!data/journals/.gitkeep
+data/ledger/*
+!data/ledger/.gitkeep
 artifacts/*
 !artifacts/.gitkeep
 download/*.csv

@@ -43,3 +43,11 @@ class HoldoutError(ValidationError):
 
 class ProviderError(FmtraderError):
     """Raised for provider protocol, alignment, or registry failures."""
+
+
+class AgentError(FmtraderError):
+    """Raised for agentic campaign / proposal / budget failures."""
+
+
+class BudgetError(AgentError):
+    """Raised when an LLM call would breach a budget cap."""

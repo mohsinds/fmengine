@@ -1,0 +1,35 @@
+# Provider-aware feature set: technical baseline subset + synthetic news.
+# No real vendor — SyntheticNewsProvider only.
+name: with_synthetic_news
+version: "1.0.0"
+description: Phase 6 — prove as-of join + optional provider composition
+
+providers:
+  - name: technical
+    required: true
+  - name: synthetic_news
+    required: true
+    safety_lag: 0s
+
+features:
+  - provider: technical
+    name: atr
+    params: { period: 14 }
+    alias: volatility_atr_14
+  - provider: technical
+    name: rsi
+    params: { period: 14 }
+    alias: momentum_rsi_14
+  - provider: synthetic_news
+    name: sentiment_polarity_last
+    null_policy: zero
+  - provider: synthetic_news
+    name: sentiment_polarity_ewm_60m
+    null_policy: zero
+  - provider: synthetic_news
+    name: news_count_15m
+    null_policy: zero
+
+validation:
+  fail_on_missing_required_provider: true
+  min_coverage_pct: 0.0

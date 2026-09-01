@@ -96,12 +96,38 @@ def build_features(
     *,
     caps: DatasetCapabilities,
     dataset_id: str,
+    symbol: str = "XAUUSD",
+    provider_registry: Any | None = None,
 ) -> pl.DataFrame:
-    """Compute all features; assumes ``validate_feature_set`` already passed.
+    """Compute all features; assumes validation already passed.
 
-    Keeps only ``ts`` + feature columns, casting numerics to Float32 as we go
-    to stay inside the machine memory budget.
+    Legacy YAML (``indicator:``) uses the indicator registry directly.
+    Provider-aware YAML (``provider:`` / ``providers:``) routes through the
+    Phase 6 compose path. Core pipeline is unchanged when no providers are used.
     """
+    uses_providers = bool(definition.get("providers")) or any(
+        isinstance(x, dict) and "provider" in x for x in (definition.get("features") or [])
+    )
+    if uses_providers:
+        from fmtrader.providers.compose import build_with_providers
+        from fmtrader.providers.registry import ProviderRegistry, default_registry
+        from fmtrader.providers.synthetic_news import SyntheticNewsProvider
+        from fmtrader.providers.technical import TechnicalProvider
+
+        reg: ProviderRegistry = provider_registry or default_registry()
+        if not reg.has("technical") and not reg.is_disabled("technical"):
+            reg.register(TechnicalProvider(caps=caps))
+        if not reg.has("synthetic_news") and not reg.is_disabled("synthetic_news"):
+            reg.register(SyntheticNewsProvider())
+        return build_with_providers(
+            bars,
+            definition,
+            registry=reg,
+            caps=caps,
+            dataset_id=dataset_id,
+            symbol=symbol,
+        )
+
     validate_feature_set(definition, caps, dataset_id=dataset_id)
     if "ts" not in bars.columns:
         raise FeatureError("bars frame missing ts")
@@ -179,25 +205,43 @@ def build_and_store(
     definition = load_feature_set_yaml(feature_set_path)
     def_hash = feature_set_definition_hash(definition)
 
-    # Fail before reading bars if gated
-    validate_feature_set(definition, caps, dataset_id=dataset_id)
+    uses_providers = bool(definition.get("providers")) or any(
+        isinstance(x, dict) and "provider" in x for x in (definition.get("features") or [])
+    )
 
-    needed: set[str] = {"ts"}
-    for item in definition["features"]:
-        needed.update(get_indicator(str(item["indicator"])).requires)
+    # Fail before reading bars if gated
+    if uses_providers:
+        for key in ("name", "version", "features"):
+            if key not in definition:
+                raise FeatureError(f"Feature set YAML missing {key!r}")
+    else:
+        validate_feature_set(definition, caps, dataset_id=dataset_id)
+
+    needed: set[str] = {"ts", "open", "high", "low", "close", "is_tradable"}
+    if not uses_providers:
+        for item in definition["features"]:
+            needed.update(get_indicator(str(item["indicator"])).requires)
+    else:
+        for item in definition["features"]:
+            if isinstance(item, dict) and item.get("provider") == "technical":
+                needed.update(get_indicator(str(item["name"])).requires)
+            elif isinstance(item, dict) and "indicator" in item:
+                needed.update(get_indicator(str(item["indicator"])).requires)
 
     catalog = Catalog(catalog_root)
     bars = catalog.read(
         symbol=manifest.symbol,
         timeframe=manifest.timeframe,
-        columns=sorted(needed),
+        columns=sorted(c for c in needed if c),
     )
 
     t0 = time.perf_counter()
     import resource
     import sys
 
-    frame = build_features(bars, definition, caps=caps, dataset_id=dataset_id)
+    frame = build_features(
+        bars, definition, caps=caps, dataset_id=dataset_id, symbol=manifest.symbol
+    )
     del bars
     elapsed = time.perf_counter() - t0
     # macOS: ru_maxrss is bytes; Linux: kilobytes

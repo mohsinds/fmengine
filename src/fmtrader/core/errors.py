@@ -39,3 +39,7 @@ class ValidationError(FmtraderError):
 
 class HoldoutError(ValidationError):
     """Raised when holdout vault access is denied or already consumed."""
+
+
+class ProviderError(FmtraderError):
+    """Raised for provider protocol, alignment, or registry failures."""

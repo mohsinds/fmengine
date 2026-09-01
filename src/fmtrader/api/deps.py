@@ -14,9 +14,7 @@ class ApiPaths:
     campaigns: Path = field(default_factory=lambda: Path("data/campaigns"))
     registry: Path = field(default_factory=lambda: Path("data/registry/trials.sqlite"))
     vault_audit: Path = field(default_factory=lambda: Path("data/vault/audit.jsonl"))
-    promotion_audit: Path = field(
-        default_factory=lambda: Path("data/vault/promotion_audit.jsonl")
-    )
+    promotion_audit: Path = field(default_factory=lambda: Path("data/vault/promotion_audit.jsonl"))
     kill_switch: Path = field(default_factory=lambda: Path("data/risk/kill_switch.json"))
     settings_file: Path = field(default_factory=lambda: Path("data/api/settings.json"))
 

@@ -67,7 +67,9 @@ async def throttled_sse(
             else:
                 envelope = SseEvent(
                     event="batch",
-                    data={"events": [{"event": e.event, "data": e.data, "id": e.id} for e in pending]},
+                    data={
+                        "events": [{"event": e.event, "data": e.data, "id": e.id} for e in pending]
+                    },
                     id=pending[-1].id,
                 )
                 yield envelope.encode()

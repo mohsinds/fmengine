@@ -1,5 +1,5 @@
 .PHONY: up down logs install check check-integration health resources \
-	ingest features sweep backtest validate noise-calibration worker campaign pause resume ui
+	ingest features sweep backtest validate noise-calibration worker campaign pause resume ui api
 
 UV ?= uv
 COMPOSE ?= docker compose
@@ -82,4 +82,7 @@ resume:
 	$(UV) run fmtrader campaign resume $(ID)
 
 ui:
-	$(error Phase 11 not implemented yet — see FRONTEND_SPEC.md)
+	cd web && npm run dev
+
+api:
+	$(UV) run fmtrader api serve --host 127.0.0.1 --port 8000

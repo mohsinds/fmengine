@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Header, Request
@@ -61,7 +59,8 @@ def get_settings() -> dict[str, Any]:
     path = get_paths().settings_file
     if not path.exists():
         return {"theme": "dark", "equity_default_points": 2000}
-    return json.loads(path.read_text(encoding="utf-8"))
+    data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    return data
 
 
 @router.patch("/settings")

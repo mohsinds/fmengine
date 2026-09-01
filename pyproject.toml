@@ -145,6 +145,8 @@ module = [
     "temporalio.*",
     "langgraph",
     "langgraph.*",
+    "mlflow",
+    "mlflow.*",
 ]
 ignore_missing_imports = true
 

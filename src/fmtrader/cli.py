@@ -20,6 +20,7 @@ app.add_typer(system_app, name="system")
 
 # Lazily import data CLI to keep `system` commands light
 from fmtrader.agents.cli import campaign_app, worker_app  # noqa: E402
+from fmtrader.api.cli import api_app  # noqa: E402
 from fmtrader.backtest.cli import backtest_app  # noqa: E402
 from fmtrader.backtest.validation.cli import registry_app, validate_app  # noqa: E402
 from fmtrader.data.cli import data_app  # noqa: E402
@@ -38,6 +39,7 @@ app.add_typer(execution_app, name="execution")
 app.add_typer(campaign_app, name="campaign")
 app.add_typer(worker_app, name="worker")
 app.add_typer(risk_app, name="risk")
+app.add_typer(api_app, name="api")
 
 console = Console()
 

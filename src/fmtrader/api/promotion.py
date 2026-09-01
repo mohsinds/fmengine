@@ -67,8 +67,13 @@ def promotion_decision(
     pbo = _metrics_float(net, "pbo", default=1.0)
     sharpe_1x = _metrics_float(net, "sharpe", "sharpe_net", "total_return_net")
     sens = manifest.cost_sensitivity or {}
+    sens_15: dict[str, Any] = {}
+    if isinstance(sens, dict):
+        raw_15 = sens.get("1.5", sens.get("1.5x", {}))
+        if isinstance(raw_15, dict):
+            sens_15 = raw_15
     sharpe_15 = _metrics_float(
-        sens.get("1.5", sens.get("1.5x", {})) if isinstance(sens, dict) else {},
+        sens_15,
         "sharpe",
         "sharpe_net",
         default=sharpe_1x,

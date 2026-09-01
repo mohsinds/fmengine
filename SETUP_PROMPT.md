@@ -27,7 +27,8 @@ Do not design anything that assumes unbounded RAM. Memory-map Parquet, stream wh
 2. **Two-lane backtesting.** `vectorbt` = fast triage lane (thousands of configs). `NautilusTrader` = fidelity lane (realistic fills, costs, event-driven). Nothing is ever declared "working" on the vectorbt lane alone.
 3. **Deterministic live path.** No LLM call ever sits between a market data tick and an order. LLMs live in the offline research tier only.
 4. **Every experiment is reproducible.** Data snapshot hash + config hash + code git SHA + seed are recorded for every run, or the run is invalid.
-5. **Overfitting is the primary enemy.** An agentic loop running for a week will generate thousands of configs and *will* find spurious edges by chance. Multiple-testing correction is a first-class subsystem, not an afterthought. See Phase 6.
+5. **Overfitting is the primary enemy.** An agentic loop running for a week will generate thousands of configs and *will* find spurious edges by chance. Multiple-testing correction is a first-class subsystem, not an afterthought. See Phase 5.
+6. **Phase numbering is canonical across all docs.** `SCOPE.md` §13 is the single source of truth for phase numbers. If this file or any other appears to disagree with it, `SCOPE.md` wins — fix the file, don't trust the stale number.
 
 ---
 
@@ -39,7 +40,7 @@ Create this structure. Use `uv` for dependency management (fast, lockfile-based)
 fmengine/
 ├── pyproject.toml                 # uv workspace root
 ├── uv.lock
-├── .python-version                # 3.12 
+├── .python-version                # 3.12
 ├── docker-compose.yml
 ├── .env.example
 ├── Makefile
@@ -106,7 +107,9 @@ fmengine/
 │   │   ├── brokers/               # ibkr.py, (later) tradovate.py, ccxt.py
 │   │   └── paper.py
 │   ├── api/                       # FastAPI: runs, experiments, journal, control
-│   └── ui/                        # Streamlit dashboard (Phase 5)
+│   └── ui/                        # Next.js review app (Phase 11). A disposable, unspecified
+│                                   # Streamlit script may live here temporarily for internal use
+│                                   # during Phases 1–5 only — see FRONTEND_SPEC.md §3.
 ├── tests/
 │   ├── unit/
 │   ├── property/                  # hypothesis-based invariants
@@ -288,7 +291,7 @@ Report gross **and** net-of-cost metrics side by side, always. Add a `cost_sensi
 ### 5.4 Metrics
 Sharpe, Sortino, Calmar, CAGR, max drawdown + duration, hit rate, profit factor, average win/loss, expectancy per trade, turnover, exposure, trade count, **cost drag as % of gross P&L**, tail ratio, Ulcer index.
 
-**Verification for Phase 4:** a trivially known strategy (e.g. buy-and-hold) produces identical net returns in both lanes within tolerance; a deliberately look-ahead-biased strategy is caught by the leakage test in Phase 6.
+**Verification for Phase 4:** a trivially known strategy (e.g. buy-and-hold) produces identical net returns in both lanes within tolerance; a deliberately look-ahead-biased strategy is caught by the leakage test in Phase 5.
 
 ---
 
@@ -306,7 +309,38 @@ This is the most important phase in the project. Build it before any agent is al
 
 ---
 
-## 7. Phase 6 — Agentic research pipeline (Temporal + LangGraph)
+## 7. Phase 6 — Provider framework (news, sentiment, fundamentals)
+
+Build this **before** the agentic pipeline, not after. The interface, not any concrete vendor, is
+the deliverable here — full design in `PROVIDER_ARCHITECTURE.md`, summarized:
+
+- **Three-timestamp contract** on every external record: `event_time` (when it happened),
+  `available_time` (when it became knowable — this is the only field the join engine may use),
+  `ingestion_time` (when we stored it). Revisions are new records with `revision_of` set, never
+  overwrites — this is what makes restated fundamentals safe to store at all.
+- **`FeatureProvider` protocol** — capability declaration, `fetch`, `feature_specs`, `health`.
+  Technical indicators get wrapped in this same protocol so the abstraction is proven, not assumed.
+- **As-of join engine** — bars joined to sparse external records on `available_time`, strategy
+  `backward`, never `event_time`. Alignment strategies: `last_known`, `decay(half_life)`,
+  `window_agg`, `count`, `since_last`, `impulse`, `scheduled_proximity`.
+- **`SyntheticNewsProvider`** — deterministic fake events for testing the join semantics without
+  needing a real vendor yet.
+- **Optionality is structural**, not a convention: the core pipeline must run identically with zero
+  providers registered, and a feature set naming an absent provider fails validation before any
+  computation starts.
+
+Do **not** integrate a real news, sentiment, or fundamentals vendor here. That is a separate,
+later decision (see `SCOPE.md` open questions 7–8) gated on picking a vendor and a budget. What
+must exist now is the seam a vendor plugs into.
+
+**Verification for Phase 6:** core pipeline runs unchanged with the provider registry empty; a
+planted test that joins on `event_time` instead of `available_time` is caught; the property test
+proving that appending future records never changes a past feature value passes; the
+`SyntheticNewsProvider` produces deterministic features.
+
+---
+
+## 8. Phase 7 — Agentic research pipeline (Temporal + LangGraph)
 
 ### 7.1 Why Temporal
 The loop must run for a week or longer, survive machine sleep/restarts, and support **pause/resume**. Temporal gives durable execution, automatic retries, signal-based pause/resume, and a UI showing exactly where the workflow is. Use `signal` handlers for `pause`, `resume`, `adjust_budget`, `abort`.
@@ -349,7 +383,7 @@ Every generation writes a human-readable entry: hypothesis, exact params tried, 
 
 ---
 
-## 8. Phase 7 — Risk & sizing (`risk/`)
+## 9. Phase 8 — Risk & sizing (`risk/`)
 
 - **Fractional Kelly** position sizing with a configurable fraction (default 0.25 — full Kelly is too aggressive for real deployment) and a hard cap on per-trade risk.
 - **Volatility targeting** — scale position size inversely to realized volatility to keep risk contribution stable across regimes.
@@ -360,18 +394,32 @@ Every generation writes a human-readable entry: hypothesis, exact params tried, 
 
 ---
 
-## 9. Phase 8 — Optional plug-in modules (design now, implement later)
+## 10. Phase 9 — CME futures onboarding
 
-Both must be **strictly optional** — the core engine runs fully without them.
+This is a real, numbered phase — treat XAUUSD results through Phase 8 as pipeline validation only,
+not tradable conclusions, until this phase re-validates them on futures data.
 
-- **Sentiment/news:** `sentiment/sources/` adapters produce timestamped, point-in-time-correct records. Critical rule: a news item is only usable at features time `t` if it was *published* before `t` — no revision leakage. Feature builder aligns to bars with an explicit publication-lag parameter.
-- **Fundamentals (equities phase):** point-in-time fundamentals with as-reported vs restated distinction. Using restated figures is a classic, subtle look-ahead bias.
+- **Databento adapter** for CME GC/MGC: real volume, open interest, MBO/MBP where needed. Capability
+  declaration flips `has_volume` / `has_open_interest` to `true`, unlocking VWAP, OBV, MFI, volume
+  profile, cumulative delta, and (with tick data) Hawkes-process features that were blocked on the
+  spot dataset.
+- **Continuous-contract construction**: back-adjusted (Panama), ratio-adjusted, and unadjusted
+  series. Roll rule by volume crossover, open-interest crossover, or fixed days-to-expiry. Retain raw
+  per-contract data alongside — a continuous series is a research construct, never traded directly.
+- **Roll-adjustment leakage guard**: the roll decision at date `d` may use only information available
+  at or before `d`. Test this directly with a planted violation.
+- **Re-validate every strategy that survived on XAUUSD against GC/MGC data.** Expect results to
+  change — cost structure, real volume, and open interest are genuinely different regimes, not just
+  a data-source swap.
 
-Register both as optional feature providers behind the same interface the technical indicators use.
+**Verification for Phase 9:** GC/MGC ingested with volume and open interest present; continuous
+series validated against known historical roll dates; previously gated volume/microstructure
+indicators now compute without error; at least one previously-`VALIDATED` strategy is re-run
+end-to-end on futures data and its verdict is reported (even if it changes).
 
 ---
 
-## 10. Phase 9 — Execution & brokers
+## 11. Phase 10 — Execution & brokers
 
 - Abstract `BrokerAdapter` interface: connect, subscribe, submit/modify/cancel, positions, account, reconcile.
 - Implement via NautilusTrader's adapters where available. **IBKR first** (paper then live), given the existing IBKR Pro account.
@@ -380,17 +428,25 @@ Register both as optional feature providers behind the same interface the techni
 
 ---
 
-## 11. Phase 10 — Observability & UI
+## 12. Phase 11 — Observability & UI
 
-- **structlog** JSON logging with run/campaign correlation IDs.
+- **structlog** JSON logging with run/campaign correlation IDs (this should already exist since
+  Phase 1 — this phase is where it's surfaced to a human, not where it's introduced).
 - **MLflow** for run tracking, params, metrics, artifacts (equity curves, trade lists), model registry.
 - **Temporal UI** for campaign state, pause/resume control.
-- **Streamlit dashboard** (`fmtrader ui`): campaign overview, generation-by-generation results table, equity curves, parameter-importance view, and the research journal rendered inline.
-- **FastAPI** endpoints so the UI is a client, not a monolith — a Next.js frontend can replace Streamlit later without backend changes.
+- **FastAPI** endpoints implementing the contract frozen at the end of Phase 5 — the UI is a client
+  of the API, never a monolith.
+- **Next.js review app** per `FRONTEND_SPEC.md` (which incorporates the execution-review content
+  formerly split into a separate `REVIEW_UI_SPEC.md` — that split is resolved; there is one UI spec
+  now). This is the only specified, tested UI deliverable in the project.
+
+**Do not build a Streamlit app as part of this phase.** If a disposable internal Streamlit script
+was used during Phases 1–5 to eyeball intermediate output, delete it once this phase ships — it was
+never a specified deliverable and has no test coverage.
 
 ---
 
-## 12. Makefile targets to provide
+## 13. Makefile targets to provide
 
 ```
 make up / down / logs        # docker stack
@@ -403,21 +459,30 @@ make backtest                # nautilus fidelity run
 make worker                  # start Temporal worker
 make campaign                # launch a research campaign
 make pause / resume          # signal a running campaign
-make ui                      # streamlit dashboard
+make ui                      # Next.js review app (Phase 11+). Before Phase 11 exists, this target
+                              # is undefined — do not wire it to a throwaway Streamlit script; run
+                              # that script directly with `streamlit run` instead if you use one.
 ```
 
 ---
 
-## 13. Execution order — do not skip ahead
+## 14. Execution order — do not skip ahead
 
 1. Phase 1 (toolchain + Docker + Ollama) → verify → report
 2. Phase 2 (data layer + quality gate + snapshots) → verify → report
 3. Phase 3 (indicators + labeling + feature store) → verify → report
-4. Phase 4 (two lanes + cost models + metrics) → verify → report
-5. Phase 5 (validation & anti-overfitting) → verify → report
-6. Phase 6 (Temporal + LangGraph campaign) → verify → report
-7. Phase 7 (risk & sizing) → verify → report
-8. Phases 8–10 as scoped later
+4. Phase 4 (two lanes + cost models + metrics + Execution Recorder) → verify → report
+5. Phase 5 (validation & anti-overfitting) → verify → report — **do not proceed past this point
+   until every leakage test passes and the noise-calibration sweep returns `NOISE`**
+6. Phase 6 (provider framework — interface only, no real vendor) → verify → report
+7. Phase 7 (Temporal + LangGraph campaign) → verify → report
+8. Phase 8 (risk & sizing) → verify → report
+9. Phase 9 (CME futures onboarding) → verify → report
+10. Phase 10 (execution & brokers) → verify → report
+11. Phase 11 (observability & UI) → verify → report
+
+This numbering matches `SCOPE.md` §13 exactly. If any other document in this repo uses a different
+number for one of these phases, that document is stale — fix it rather than trusting it.
 
 At each phase: write tests first where practical, keep functions pure and typed, document every non-obvious decision in a short ADR under `docs/adr/`.
 

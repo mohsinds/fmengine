@@ -31,59 +31,63 @@ where a silent bug produces a plausible-looking wrong number. Lower elsewhere is
 
 ---
 
-## Phase 0 — Repository scaffolding
+## Phase 1 — Foundation & infrastructure
 
-### Deliverables
+Two sub-parts, done in order within this one phase: scaffolding first (nothing to run yet), then
+infrastructure (the stack that everything else depends on).
+
+### 1a. Repository scaffolding
+
+#### Deliverables
 `pyproject.toml` (uv workspace, dependency groups), `.python-version`, `Makefile`, `.gitignore`,
-`.env.example`, `pre-commit` config, `.cursor/` bundle, `docs/` with SCOPE / PLAN / FRONTEND_SPEC /
-REVIEW_UI_SPEC, empty package skeleton with `__init__.py` files, `docs/adr/0000-template.md`.
+`.env.example`, `pre-commit` config, `.cursor/` bundle, `docs/` with `SCOPE.md`, `PLAN.md`,
+`FRONTEND_SPEC.md` (the execution-review/observability content lives in that same file, §13–20 —
+there is no separate `REVIEW_UI_SPEC.md`), `PROVIDER_ARCHITECTURE.md`, empty package skeleton with
+`__init__.py` files, `docs/adr/0000-template.md`.
 
-### Steps
+#### Steps
 1. `uv init --python 3.12`; create the `src/fmtrader/` tree from `SCOPE.md` §6.
 2. Define dependency groups: `core`, `data`, `backtest`, `ml`, `agents`, `orchestration`, `tracking`, `api`, `dev`.
 3. Configure ruff (line length 100, full rule set minus noise), mypy strict, pytest markers
    (`integration`, `slow`, `leakage`).
 4. Pre-commit: ruff format, ruff check, mypy, no-large-files, no-secrets.
-5. `Makefile` targets per `SETUP_PROMPT.md` §12.
+5. `Makefile` targets per `SETUP_PROMPT.md` §13.
+6. Copy `.env.example` — do not create `.env` itself; that stays local and gitignored.
 
-### Tests
+#### Tests
 - `tests/unit/test_imports.py` — every module imports cleanly with no circular dependencies.
 - `tests/unit/test_package_structure.py` — asserts `core` imports nothing from `fmtrader.*`
   (the dependency-free invariant).
 
-### Verification
-```bash
-make install && make check          # ruff + mypy + pytest all green on an empty suite
-python -c "import fmtrader; print(fmtrader.__version__)"
-```
-
-### Exit criteria
-- [ ] `make check` green
+#### Exit criteria
+- [ ] `make check` green on an empty suite
 - [ ] `core` has zero internal imports (test enforces it)
 - [ ] Pre-commit hooks fire on a test commit
+- [ ] `.env` is gitignored; `git status` after copying `.env.example` → `.env` shows it untracked
 
-### Failure modes to watch
+#### Failure modes to watch
 Circular imports between `core` and `config` — resolve by keeping `core` free of settings.
 Dependency-group bloat: if `make install` with only `core` pulls in vectorbt, the groups are wrong.
 
----
+### 1b. Infrastructure
 
-## Phase 1 — Infrastructure
-
-### Deliverables
+#### Deliverables
 `docker-compose.yml`, `scripts/init-multiple-dbs.sh`, health-check CLI, Ollama models pulled,
 memory-monitor utility, structured logging bootstrap.
 
-### Steps
-1. Bring up the stack; confirm each service's health endpoint.
-2. `scripts/init-multiple-dbs.sh` creates `fmtrader`, `temporal`, `temporal_visibility`, `mlflow`.
-3. Implement `fmtrader system health` — checks all six services, prints a table with latency.
-4. Implement `fmtrader system resources` — memory breakdown by Docker / Ollama / Python workers
+#### Steps
+1. Copy `.env.example` to `.env` and set real `QUESTDB_PASSWORD` / `POSTGRES_PASSWORD` — the
+   compose file uses `${VAR:?error}` syntax and will refuse to start without them. This is
+   deliberate: there is no working weak-default fallback to silently run on.
+2. Bring up the stack; confirm each service's health endpoint.
+3. `scripts/init-multiple-dbs.sh` creates `fmtrader`, `temporal`, `temporal_visibility`, `mlflow`.
+4. Implement `fmtrader system health` — checks all six services, prints a table with latency.
+5. Implement `fmtrader system resources` — memory breakdown by Docker / Ollama / Python workers
    against the 24 GB budget.
-5. Install Ollama natively (Metal), pull the three models.
-6. `structlog` bootstrap: JSON output, `run_id`/`campaign_id` correlation fields.
+6. Install Ollama natively (Metal), pull the three models.
+7. `structlog` bootstrap: JSON output, `run_id`/`campaign_id` correlation fields.
 
-### Tests
+#### Tests
 ```
 tests/integration/test_infra.py
   test_questdb_reachable_and_writable
@@ -97,10 +101,13 @@ tests/unit/test_memory_monitor.py
   test_flags_breach_when_over_ceiling
 tests/unit/test_logging.py
   test_correlation_id_propagates_through_context
+tests/unit/test_env_config.py
+  test_missing_required_env_var_fails_fast_with_named_error
 ```
 
-### Verification
+#### Verification
 ```bash
+cp .env.example .env   # then edit .env with real credentials before continuing
 make up && sleep 30
 docker compose ps                    # all healthy
 fmtrader system health               # all six green
@@ -109,13 +116,14 @@ ollama run qwen2.5-coder:7b "say ok"
 make check
 ```
 
-### Exit criteria
+#### Exit criteria
 - [ ] All six services healthy, restart-persistent (`docker compose restart` → still healthy)
+- [ ] Running `make up` with `.env` absent or a blank credential fails immediately with a named error, not a silent weak-default start
 - [ ] Memory monitor reports Docker stack < 6 GB at idle
 - [ ] Ollama responds and the 14B model loads within its ceiling
 - [ ] Logs emit valid JSON with correlation fields
 
-### Failure modes
+#### Failure modes
 Docker Desktop's own memory allocation on macOS is separate from container limits — check
 Settings → Resources. Temporal's auto-setup image needs its databases to already exist; if it crash-loops,
 the init script did not run. Ollama in Docker loses Metal acceleration — it must be native.
@@ -616,36 +624,7 @@ tests/unit/test_limits.py
 
 ---
 
-## Phase 9 — Review UI backend & frontend
-
-Per `docs/REVIEW_UI_SPEC.md`. Build order R1→R8.
-
-### Tests
-```
-tests/integration/test_api_contract.py
-  test_openapi_schema_valid
-  test_every_documented_endpoint_responds
-  test_execution_manifest_endpoint_returns_all_sections
-  test_equity_endpoint_downsamples_to_requested_points
-  test_breakdown_endpoint_supports_all_dimensions
-tests/integration/test_sse.py
-  test_campaign_stream_emits_expected_events
-  test_events_are_batched_under_throttle_threshold
-  test_client_reconnect_resumes_stream
-```
-Frontend: Vitest for components, Playwright for the critical paths — open an execution, read its
-manifest, drill to a trade; pause and resume a campaign; attempt promotion with a failing DSR gate
-and confirm it is blocked.
-
-### Exit criteria
-- [ ] Any execution can be opened and its full ingredients reconstructed without guessing
-- [ ] Win rate never renders without expectancy beside it
-- [ ] Equity curves with 2M underlying points render < 500 ms
-- [ ] Promotion blocked when DSR gate fails
-
----
-
-## Phase 10 — CME futures onboarding
+## Phase 9 — CME futures onboarding
 
 ### Tests
 ```
@@ -671,7 +650,7 @@ tests/integration/test_futures_revalidation.py
 
 ---
 
-## Phase 11 — Execution & paper trading
+## Phase 10 — Execution & paper trading
 
 ### Tests
 ```
@@ -710,19 +689,53 @@ Run these at the end of every phase from 4 onward, not only at the end:
 
 ---
 
+## Phase 11 — Review UI backend & frontend
+
+Per `docs/FRONTEND_SPEC.md` §13–21 (the execution-review and observability content that used to live
+in a separate `REVIEW_UI_SPEC.md` is merged into that file now — there is one UI spec, not two).
+Build order: `FRONTEND_SPEC.md` §21, stages B0–B11.
+
+### Tests
+```
+tests/integration/test_api_contract.py
+  test_openapi_schema_valid
+  test_every_documented_endpoint_responds
+  test_execution_manifest_endpoint_returns_all_sections
+  test_equity_endpoint_downsamples_to_requested_points
+  test_breakdown_endpoint_supports_all_dimensions
+tests/integration/test_sse.py
+  test_campaign_stream_emits_expected_events
+  test_events_are_batched_under_throttle_threshold
+  test_client_reconnect_resumes_stream
+```
+Frontend: Vitest for components, Playwright for the critical paths — open an execution, read its
+manifest, drill to a trade; pause and resume a campaign; attempt promotion with a failing DSR gate
+and confirm it is blocked.
+
+### Exit criteria
+- [ ] Any execution can be opened and its full ingredients reconstructed without guessing
+- [ ] Win rate never renders without expectancy beside it
+- [ ] Equity curves with 2M underlying points render < 500 ms
+- [ ] Promotion blocked when DSR gate fails
+
+---
+
 ## Phase dependency graph
 
 ```
-0 ──> 1 ──> 2 ──> 3 ──> 4 ──> 5 ──┬──> 7 ──> 8 ──> 11
-                            │      │
-                            │      └──> 9
-                            └──> 6 ──────┘
-                                         └──> 10
+1 ──> 2 ──> 3 ──> 4 ──> 5 ──┬──> 7 ──> 8 ──┬──> 9 ──> 10 ──> 11
+                      │      │              │
+                      └──> 6 ┘              └──> 11
 ```
 
 **Hard rule:** 5 before 7. An agent on an unvalidated harness manufactures false confidence at scale.
 **Recommended:** 6 before 7, so the agent can propose sentiment features from day one rather than
 requiring a campaign redesign later.
+**No ordering constraint:** 9, 10, and 11 may proceed in any order relative to each other once 8 is
+done — sequence them by whichever unblocks the next decision you actually need to make. The diagram
+shows the default (9 → 10 → 11) but 11 in particular can start as soon as 8 is done, in parallel with
+9 and 10, since the review UI only needs executions, campaigns, and risk decisions to exist —
+not CME data or live brokers.
 
 ---
 
@@ -730,8 +743,7 @@ requiring a campaign redesign later.
 
 | Phase | Effort | Note |
 |---|---|---|
-| 0 Scaffolding | 1 day | |
-| 1 Infrastructure | 1–2 days | Docker/Ollama friction on macOS |
+| 1 Foundation & infrastructure | 2–3 days | Scaffolding (1a) is quick; Docker/Ollama friction on macOS is where the time goes (1b) |
 | 2 Data | 4–6 days | Quality gate is more work than it appears |
 | 3 Features | 5–8 days | Indicator count drives this |
 | 4 Backtest + Recorder | 6–9 days | Lane parity is the slow part |
@@ -739,9 +751,9 @@ requiring a campaign redesign later.
 | 6 Providers | 3–4 days | Framework only |
 | 7 Agentic | 7–10 days | Temporal determinism rules take adjustment |
 | 8 Risk | 3–4 days | |
-| 9 Review UI | 10–15 days | Backend + frontend |
-| 10 CME | 4–6 days | Plus data cost |
-| 11 Execution | 5–8 days | |
+| 9 CME | 4–6 days | Plus data cost |
+| 10 Execution | 5–8 days | |
+| 11 Review UI | 10–15 days | Backend + frontend; can overlap with 9–10 once 8 is done |
 
-Roughly 11–17 weeks of focused solo work to Phase 11. Phases 0–5 — the trustworthy research core —
+Roughly 11–17 weeks of focused solo work through Phase 11. Phases 1–5 — the trustworthy research core —
 are about 4–6 weeks and are the part worth doing carefully.

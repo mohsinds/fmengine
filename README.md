@@ -42,13 +42,17 @@ ollama pull nomic-embed-text
 | Service | URL |
 |---|---|
 | QuestDB console | http://localhost:9000 |
-| QuestDB (pg wire) | `postgresql://admin:quest@localhost:8812/qdb` |
-| Postgres | `postgresql://fmtrader:fmtrader@localhost:5432/fmtrader` |
+| QuestDB (pg wire) | `postgresql://$QUESTDB_USER:$QUESTDB_PASSWORD@localhost:8812/qdb` |
+| Postgres | `postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@localhost:5432/fmtrader` |
 | Temporal UI | http://localhost:8233 |
 | MLflow | http://localhost:5001 |
 | Ollama | http://localhost:11434 |
 
-Change the default credentials in `.env` before this touches anything real.
+**Before running `make up` for the first time:** copy `.env.example` to `.env` and set real
+`QUESTDB_PASSWORD` / `POSTGRES_PASSWORD` values — `openssl rand -base64 24` works well. This is not
+optional cleanup for later: `docker-compose.yml` uses `${VAR:?error}` syntax for these, so the stack
+will refuse to start at all with a named error if `.env` is missing or a credential is blank. There
+is no working default to fall back on, by design.
 
 ## How to verify each phase
 

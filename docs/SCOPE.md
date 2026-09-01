@@ -267,7 +267,7 @@ Status legend: `PLANNED` · `IN PROGRESS` · `BUILT` · `DEFERRED` · `BLOCKED`
 | **Owns** | GBM training (LightGBM/XGBoost), probability calibration (Platt/isotonic), split-conformal uncertainty, Bayesian baseline, model serialization |
 | **Must not** | Make network calls, invoke an LLM, or depend on non-deterministic inputs |
 | **Key rule** | Probabilities feeding position sizing must be calibrated. Uncalibrated probabilities make Kelly sizing dangerous |
-| **Phase** | 5–7 · **Status:** `PLANNED` |
+| **Phase** | 5–8 · **Status:** `PLANNED` |
 
 ### 6.9 `risk` — sizing, limits, kill-switches
 | | |
@@ -276,7 +276,7 @@ Status legend: `PLANNED` · `IN PROGRESS` · `BUILT` · `DEFERRED` · `BLOCKED`
 | **Owns** | Fractional Kelly (default 0.25), volatility targeting, fixed-fractional sizing, conformal uncertainty gate, per-trade / daily / drawdown limits, consecutive-loss breaker, kill-switch |
 | **Position** | Structurally between signal and execution. Never inside strategy code |
 | **Deferred** | RMT / Ledoit-Wolf correlation cleaning — requires multi-asset universe |
-| **Phase** | 7 · **Status:** `PLANNED` |
+| **Phase** | 8 · **Status:** `PLANNED` |
 
 ### 6.10 `agents` — Tier 2, offline research
 | | |
@@ -285,14 +285,15 @@ Status legend: `PLANNED` · `IN PROGRESS` · `BUILT` · `DEFERRED` · `BLOCKED`
 | **Owns** | LangGraph loop, node implementations (hypothesize / validate / evaluate / critique / select), LLM router, budget governor, cost ledger, research journal |
 | **Must not** | Read the holdout, write to the trial registry directly, emit executable code, or influence live execution |
 | **Key rule** | Agents propose **structured configs against a declared schema**, which trusted code validates and instantiates. Never free-form Python |
-| **Phase** | 6 · **Status:** `PLANNED` |
+| **Depends on** | Module 6.7 `validation` (built first, no exception) · may consume module 6.13 `sentiment`/6.14 `fundamentals` features once registered |
+| **Phase** | 7 · **Status:** `PLANNED` |
 
 ### 6.11 `orchestration` — durable execution
 | | |
 |---|---|
 | **Purpose** | Run week-long campaigns that survive restarts and support pause/resume |
 | **Owns** | Temporal workflows and activities, signal handlers (`pause`, `resume`, `adjust_budget`, `abort`), per-generation checkpointing, worker process |
-| **Phase** | 6 · **Status:** `PLANNED` |
+| **Phase** | 7 · **Status:** `PLANNED` |
 
 ### 6.12 `execution` — brokers and live trading
 | | |
@@ -300,31 +301,32 @@ Status legend: `PLANNED` · `IN PROGRESS` · `BUILT` · `DEFERRED` · `BLOCKED`
 | **Purpose** | Route validated strategies to paper and live venues |
 | **Owns** | `BrokerAdapter` interface, IBKR adapter, paper harness, order reconciliation, idempotent client order IDs, independent kill-switch |
 | **Key rule** | Paper and live use the identical strategy code path as backtest. Divergence is a defect |
-| **Phase** | 9 · **Status:** `PLANNED` |
+| **Phase** | 10 · **Status:** `PLANNED` |
 
-### 6.13 `sentiment` — optional feature provider
+### 6.13 `sentiment` — pluggable feature provider (framework now, sources later)
 | | |
 |---|---|
-| **Purpose** | News and sentiment as optional, pluggable features |
-| **Owns** | Source adapters (RSS, news APIs), publication-time alignment, sentiment scoring, lag configuration |
-| **Key rule** | A news item is usable at bar `t` only if its **publication timestamp** precedes `t`. Revision leakage is a silent, severe bias |
-| **Optionality** | The core engine must run fully without this module installed or configured |
-| **Phase** | Later · **Status:** `PLANNED` |
+| **Purpose** | News and sentiment as optional, pluggable features, via the shared `FeatureProvider` protocol |
+| **Owns** | The point-in-time record contract, as-of join engine, alignment strategies, and a `SyntheticNewsProvider` for testing the join semantics. See `PROVIDER_ARCHITECTURE.md` |
+| **Key rule** | A record is usable at bar `t` only if its **`available_time`** precedes `t` — never `event_time`. Revision leakage is a silent, severe bias |
+| **Optionality** | The core engine must run fully without any concrete provider installed or configured |
+| **Phase** | **6** — protocol, join engine, and synthetic provider are built here, before the agentic pipeline, so Phase 7 can propose sentiment features from its first campaign. A real news/sentiment vendor is a separate, later decision (see open question 7); the framework itself is not deferred. **Status:** `PLANNED` |
 
-### 6.14 `fundamentals` — optional, equities phase
+### 6.14 `fundamentals` — pluggable feature provider (framework now, equities data later)
 | | |
 |---|---|
-| **Purpose** | Point-in-time fundamental data for equity strategies |
-| **Key rule** | As-reported only, never restated. Using restated figures is a classic look-ahead bias |
-| **Phase** | Equities phase · **Status:** `DEFERRED` |
+| **Purpose** | Point-in-time fundamental data for equity strategies, via the same `FeatureProvider` protocol as 6.13 |
+| **Key rule** | As-reported only, never restated, enforced via the three-timestamp contract (`event_time` / `available_time` / `ingestion_time`). Using restated figures is a classic look-ahead bias |
+| **Phase** | Protocol support ships in **Phase 6** alongside 6.13 (same interface, no separate framework work). Concrete equity fundamentals vendor integration: **Equities phase** · **Status:** `DEFERRED` (vendor selection), framework `PLANNED` |
 
 ### 6.15 `api` & `ui` — observability
 | | |
 |---|---|
 | **Purpose** | Make campaign state, results, and reasoning legible to a human |
-| **Owns** | FastAPI endpoints (runs, experiments, journal, campaign control), Streamlit dashboard, journal Markdown rendering |
-| **Design rule** | The UI is a client of the API, never a monolith. A Next.js frontend must be able to replace Streamlit without backend changes |
-| **Phase** | 10, ongoing · **Status:** `PLANNED` |
+| **Owns** | FastAPI endpoints (runs, experiments, journal, campaign control), the Next.js review UI, journal Markdown rendering |
+| **Design rule** | The UI is a client of the API, never a monolith. The FastAPI contract is frozen at the end of Phase 5 so UI work never blocks on backend churn |
+| **Interim tool** | A disposable Streamlit script may be used **internally, Phases 1–5 only**, to eyeball ingestion/feature/backtest output while those layers are being built. It is not tested, not specified, not part of any deliverable, and is deleted once Phase 11 ships. See `FRONTEND_SPEC.md` §3 |
+| **Phase** | 11 · **Status:** `PLANNED` |
 
 ---
 
@@ -334,7 +336,7 @@ Status legend: `PLANNED` · `IN PROGRESS` · `BUILT` · `DEFERRED` · `BLOCKED`
 | Asset class | Instruments | Vendor | Phase | Status |
 |---|---|---|---|---|
 | Spot gold (CFD) | XAUUSD | Dukascopy (free) | 1–7 | Active |
-| CME metals futures | GC, MGC, SI, HG | Databento / Barchart | 8 | Planned |
+| CME metals futures | GC, MGC, SI, HG | Databento / Barchart | 9 | Planned |
 | US equities | Liquid large-cap universe | Polygon / Databento + fundamentals vendor | Later | Planned |
 | Crypto | BTC, ETH spot + perps | CCXT / exchange APIs | Later | Planned |
 | FX | Major pairs | Dukascopy / broker feed | Later | Planned |
@@ -348,7 +350,7 @@ Status legend: `PLANNED` · `IN PROGRESS` · `BUILT` · `DEFERRED` · `BLOCKED`
 | **No volume column** | VWAP, OBV, MFI, volume profile, cumulative delta, Hawkes intensity all unavailable | Capability gating raises a named error |
 | **Bid side only** | Spread unmeasurable | Conservative assumed spread from config; never zero. Download ask side to fix |
 | Flat-bar runs (identical OHLC) | No-tick periods — weekends, holidays, thin hours | Detect runs, flag non-tradable, exclude from signal generation |
-| Spot CFD ≠ CME futures | No open interest, no roll, synthetic broker quotes, different cost structure | Phase 1–7 results are **pipeline validation, not tradable conclusions**. Re-validate in Phase 8 |
+| Spot CFD ≠ CME futures | No open interest, no roll, synthetic broker quotes, different cost structure | Phase 1–8 results are **pipeline validation, not tradable conclusions**. Re-validate in Phase 9 |
 
 ### Storage model
 - **Canonical Parquet** partitioned `symbol/timeframe/year=YYYY/month=MM` — the source of truth
@@ -362,7 +364,7 @@ Status legend: `PLANNED` · `IN PROGRESS` · `BUILT` · `DEFERRED` · `BLOCKED`
 **Report:** gaps classified against the session calendar (weekend / holiday / rollover / anomalous) ·
 MAD-based return outliers · flat-bar run counts · monthly coverage table.
 
-### Futures-specific scope (Phase 8)
+### Futures-specific scope (Phase 9)
 Continuous-contract construction supporting back-adjusted (Panama), ratio-adjusted, and unadjusted
 series; roll rules by volume crossover, open-interest crossover, or fixed days-to-expiry. Raw
 per-contract data retained alongside — a continuous contract is a research construct and cannot be
@@ -379,7 +381,7 @@ traded. Roll adjustment must not leak future information into historical bars.
 | **Momentum** | RSI (incl. short-period RSI(2)/RSI(7) for scalping), Stochastic, CCI, Williams %R, ROC, MACD + histogram slope, TSI | OHLC |
 | **Volatility** | ATR & normalized ATR, Bollinger Bands + %B + bandwidth/squeeze, Keltner, Donchian, Chaikin volatility, Parkinson, Garman-Klass, Rogers-Satchell, Yang-Zhang, quantile volatility regime | OHLC |
 | **Volume** | VWAP + bands, anchored VWAP, OBV, MFI, volume profile / POC, cumulative delta | **Volume — unavailable on current dataset** |
-| **Microstructure** | Order-book imbalance, trade-arrival intensity, Hawkes clustering, spread dynamics | **Tick/L2 — Phase 8+** |
+| **Microstructure** | Order-book imbalance, trade-arrival intensity, Hawkes clustering, spread dynamics | **Tick/L2 — Phase 9+** |
 | **Session/time** | Minute-of-day, session bucket (Asia/London/NY), time-since-open, day-of-week, macro-release proximity | Timestamp |
 | **Cross-asset** | Gold/silver ratio, gold/copper ratio, DXY, real yields | Multi-instrument — later |
 
@@ -387,11 +389,11 @@ traded. Roll adjustment must not leak future information into historical bars.
 | Method | Verdict | Placement |
 |---|---|---|
 | **Quantile volatility regime** | Use now. Cheap, robust, genuinely informative | Phase 3, `features/regime` |
-| **Conformal prediction filter** | Use. The sharpest tool here — implements "high probability but high uncertainty → skip or shrink" | Phase 7, `models/conformal` + `risk` |
-| **Fractional Kelly sizing** | Use, at ~0.25 fraction. Full Kelly is too aggressive for real deployment | Phase 7, `risk/sizing` |
-| **Probability calibration** | Prerequisite for Kelly, not an optional refinement. Uncalibrated inputs make Kelly actively dangerous | Phase 5–7, `models/calibrate` |
+| **Conformal prediction filter** | Use. The sharpest tool here — implements "high probability but high uncertainty → skip or shrink" | Phase 8, `models/conformal` + `risk` |
+| **Fractional Kelly sizing** | Use, at ~0.25 fraction. Full Kelly is too aggressive for real deployment | Phase 8, `risk/sizing` |
+| **Probability calibration** | Prerequisite for Kelly, not an optional refinement. Uncalibrated inputs make Kelly actively dangerous | Phase 5–8, `models/calibrate` |
 | **Bayesian classifier** | Acceptable baseline; gradient-boosted trees will likely outperform. The value is calibrated probabilities, not Bayes specifically | Phase 5, `models/bayes` |
-| **Hawkes process** | `BLOCKED` — requires trade/tick arrival data. Cannot run on volume-less 1-minute bars | Phase 8+ |
+| **Hawkes process** | `BLOCKED` — requires trade/tick arrival data. Cannot run on volume-less 1-minute bars | Phase 9+ |
 | **Random Matrix Theory / Ledoit-Wolf** | `DEFERRED` — meaningless on a single instrument | Multi-asset phase, `risk/portfolio` |
 | **Deflated Sharpe Ratio, PBO/CSCV** | **Mandatory.** The most important addition to the analytics scope given the planned scale of automated search | Phase 5, `validation` |
 
@@ -483,9 +485,9 @@ process.
 | Capability | Phase | Notes |
 |---|---|---|
 | Backtest execution simulation | 4 | Both lanes |
-| Paper trading | 9 | Identical code path to backtest |
+| Paper trading | 10 | Identical code path to backtest |
 | Live trading | Post-validation | Hard capital limits at first deployment |
-| Broker: IBKR | 9 | First adapter — existing Pro account |
+| Broker: IBKR | 10 | First adapter — existing Pro account |
 | Broker: futures-specialist (Tradovate/Rithmic) | Later | If execution quality warrants |
 | Broker: crypto via CCXT | Later | |
 | Multi-venue smart order routing | Out of scope for now | |
@@ -541,22 +543,35 @@ independently of the main application process.
 
 ## 13. Roadmap & exit criteria
 
+This is the single canonical phase numbering for the project. Every other document
+(`SETUP_PROMPT.md`, `BUILD_PLAN.md`, `PROVIDER_ARCHITECTURE.md`, `FRONTEND_SPEC.md`) uses these same
+eleven numbers. If a document appears to disagree, the document is wrong and this table is the
+tiebreaker — see the maintenance note at the end of this file.
+
 | Phase | Scope | Exit criteria |
 |---|---|---|
-| **1. Foundation** | uv workspace, Docker stack, Ollama, tooling, CI | `make up && make check` green; all service UIs load |
+| **1. Foundation** | Repo scaffolding, Docker stack, Ollama, tooling, CI | `make up && make check` green; all service UIs load |
 | **2. Data** | Contracts, Dukascopy adapter, quality gate, catalog, snapshots | Gold ingested; coverage table printed; Parquet/QuestDB counts reconcile; 10 bars hand-verified |
 | **3. Features** | Indicators, regime, labeling, feature store | All indicator + property tests pass; full build inside memory budget; volume request on this dataset raises |
-| **4. Backtest** | Two lanes, cost models, metrics | Buy-and-hold nets identical across lanes within tolerance; planted look-ahead strategy caught |
-| **5. Validation ★** | Purged CV, walk-forward, trial registry, DSR, PBO, holdout vault | Every planted leakage bug caught; holdout guard proves the vault unreadable via normal paths |
-| **6. Agentic** | Temporal workflows, LangGraph loop, budget governor, journal | 24h campaign runs; paused mid-generation; machine restarted; resumes correctly; journal explains every decision |
-| **7. Risk** | Kelly, vol targeting, conformal gate, limits, kill-switch | Sizing tests pass; conformal gate rejects high-uncertainty signals; kill-switch halts on breach |
-| **8. CME futures** | Databento adapter, rolls, real volume, microstructure unlock | GC/MGC ingested with OI; continuous series validated; surviving strategies re-validated on futures data |
-| **9. Execution** | Broker adapters, paper trading, reconciliation | Paper trades execute on the identical code path; reconciliation survives a forced disconnect |
-| **10. Observability** | FastAPI, Streamlit, journal rendering | Campaign state, results, and reasoning legible without reading logs |
-| **Later** | Sentiment, equities + fundamentals, crypto, multi-asset portfolio, web UI | Per-module criteria defined when scheduled |
+| **4. Backtest + Execution Recorder** | Two lanes, cost models, metrics, provenance capture | Buy-and-hold nets identical across lanes within tolerance; planted look-ahead strategy caught; every run writes a complete manifest |
+| **5. Validation ★** | Purged CV, walk-forward, trial registry, DSR, PBO, holdout vault | Every planted leakage bug caught; noise-calibration sweep returns `NOISE`; holdout guard proves the vault unreadable via normal paths |
+| **6. Provider framework** | `FeatureProvider` protocol, point-in-time contract, as-of join engine, `SyntheticNewsProvider` | Core pipeline runs unchanged with zero providers registered; planted `event_time` join is caught; property test proves future records never change past feature values |
+| **7. Agentic** | Temporal workflows, LangGraph loop, budget governor, journal | 24h campaign runs; paused mid-generation; machine restarted; resumes correctly; journal explains every decision |
+| **8. Risk** | Kelly, vol targeting, conformal gate, limits, kill-switch | Sizing tests pass; conformal gate rejects high-uncertainty signals; kill-switch halts on breach |
+| **9. CME futures** | Databento adapter, rolls, real volume, microstructure unlock | GC/MGC ingested with OI; continuous series validated; surviving strategies re-validated on futures data |
+| **10. Execution** | Broker adapters, paper trading, reconciliation | Paper trades execute on the identical code path; reconciliation survives a forced disconnect |
+| **11. Observability & UI** | FastAPI (contract frozen at end of Phase 5), Next.js review app, journal rendering | Campaign state, results, and reasoning legible without reading logs; win rate never renders without expectancy beside it |
+| **Later** | Concrete news/sentiment vendor, equities + fundamentals vendor, crypto, FX, multi-asset portfolio | Per-vendor criteria defined when a vendor is selected — see open question 7 |
 
-**Sequencing rule:** Phase 5 precedes Phase 6, without exception. An agent turned loose on an
-unvalidated backtest harness is an efficient generator of expensive false confidence.
+**Sequencing rules, in order of strictness:**
+1. **Phase 5 before Phase 7, without exception.** An agent turned loose on an unvalidated backtest
+   harness is an efficient generator of expensive false confidence.
+2. **Phase 6 before Phase 7, recommended but not hard-blocking.** Building the provider framework
+   first means the agent can propose sentiment/fundamentals feature sets from its very first
+   campaign. Doing it in the other order is possible but means a mid-project redesign of the search
+   space once providers arrive.
+3. Phases 9, 10, and 11 have no ordering constraint against each other — sequence them by whichever
+   unblocks the next decision you actually need to make.
 
 ---
 
@@ -592,10 +607,14 @@ Implement `BrokerAdapter` (connect, subscribe, submit/modify/cancel, positions, 
 idempotent client order IDs → reconciliation on reconnect → paper validation before live → confirm
 the kill-switch reaches it independently.
 
-### Adding an optional feature provider (sentiment, fundamentals, alternative data)
-Implement the feature-provider interface → guarantee point-in-time correctness with explicit
-publication lag → ensure the core engine runs unchanged when the provider is absent → gate features
-on provider availability.
+### Adding a feature provider (sentiment, fundamentals, alternative data)
+Implement the `FeatureProvider` protocol from Phase 6 → declare capabilities and `PointInTimeRecord`
+semantics → choose alignment strategies per feature → guarantee point-in-time correctness via
+`available_time`, never `event_time` → ensure the core engine runs unchanged when the provider is
+absent → gate features on provider availability → run the paired with/without campaign comparison
+before drawing any conclusion about the provider's value. Full spec: `PROVIDER_ARCHITECTURE.md`.
+This adds a new adapter and a new YAML block only — no changes to the pipeline, backtest engine,
+validation layer, or UI. If it forces such a change, the abstraction has a hole in it.
 
 ---
 
@@ -606,13 +625,14 @@ on provider availability.
 | Automated search produces spurious edges at scale | **Critical** | Trial registry, DSR, PBO, locked holdout — built before any agent runs | 5 |
 | Look-ahead bias in features or fills | **Critical** | Leakage test suite with planted bugs; `/leak-audit` before trusting any result; red-team review | 4–5 |
 | Scalping edge lies entirely inside the spread | High | Net-of-cost reporting always; 1.5×/2.0× sensitivity as a hard gate; cost drag reported | 4 |
-| Bid-only, volume-less data misleads assumptions | High | Capability gating raises loudly; acquire ask side; conservative spread constant; re-validate on CME data | 2, 8 |
-| XAUUSD results fail to transfer to GC futures | Medium | Treat Phases 1–7 as pipeline validation, not tradable conclusions | 8 |
+| Bid-only, volume-less data misleads assumptions | High | Capability gating raises loudly; acquire ask side; conservative spread constant; re-validate on CME data | 2, 9 |
+| XAUUSD results fail to transfer to GC futures | Medium | Treat Phases 1–8 as pipeline validation, not tradable conclusions | 9 |
 | 24 GB memory contention | Medium | Explicit budgets, capped containers, pre-load memory checks, configurable workers | 1 |
-| LLM API overspend on a long campaign | Medium | Pre-call estimation, three-level caps, ledger, graceful degradation | 6 |
-| Campaign lost to restart or sleep | Medium | Temporal durable execution with per-generation checkpoints | 6 |
+| LLM API overspend on a long campaign | Medium | Pre-call estimation, three-level caps, ledger, graceful degradation | 7 |
+| Campaign lost to restart or sleep | Medium | Temporal durable execution with per-generation checkpoints | 7 |
+| Provider join uses publication time instead of availability time | **Critical** | As-of join engine keys exclusively on `available_time`; planted-leakage and property tests in Phase 6 | 6 |
 | Scope sprawl across asset classes | Medium | One instrument working end-to-end before adding a second; adapters at the edges | Ongoing |
-| Live/backtest behavioral divergence | High | Single code path across lanes and live; parity tests; paper period before capital | 9 |
+| Live/backtest behavioral divergence | High | Single code path across lanes and live; parity tests; paper period before capital | 10 |
 
 ---
 
@@ -664,6 +684,8 @@ Format: context · options considered · decision · consequences · date.
 | 0006 | Validation subsystem built before the agentic loop | An agent on an unvalidated harness manufactures false confidence at scale |
 | 0007 | Holdout vault enforced in code, not by convention | Human discipline reliably fails against the temptation to peek |
 | 0008 | Start with a single instrument end-to-end | Proves the pipeline before multiplying surface area |
+| 0009 | Provider framework (Phase 6) built before the agentic pipeline (Phase 7), ahead of any concrete vendor | Concrete news/fundamentals vendors remain a later, separate decision (open questions 7–8), but the pluggable interface must exist before the agent's search space is designed, or the search space needs a mid-project redesign |
+| 0010 | The Next.js app in `FRONTEND_SPEC.md`, not Streamlit, is the only specified UI deliverable | Streamlit is disposable internal tooling for Phases 1–5; specifying two production UIs invited exactly the drift this decision closes off — see resolved open question 4 |
 
 ---
 
@@ -671,13 +693,14 @@ Format: context · options considered · decision · consequences · date.
 
 | # | Question | Blocks | Status |
 |---|---|---|---|
-| 1 | Primary broker for paper and live — IBKR, or a futures specialist (Tradovate/Rithmic)? | Phase 9 adapter priority | Open |
-| 2 | Weekly USD budget cap for frontier LLM calls | Phase 6 governor configuration | Open |
-| 3 | GC ($10/tick) or MGC ($1/tick) as the live target? | Phase 7 position sizing realism | Open |
-| 4 | Streamlit sufficient through Phase 5, or is a richer UI needed earlier? | Phase 10 sequencing | Open |
-| 5 | Timeline and trigger for acquiring paid CME data | Phase 8 start | Open |
+| 1 | Primary broker for paper and live — IBKR, or a futures specialist (Tradovate/Rithmic)? | Phase 10 adapter priority | Open |
+| 2 | Weekly USD budget cap for frontier LLM calls | Phase 7 governor configuration | Open |
+| 3 | GC ($10/tick) or MGC ($1/tick) as the live target? | Phase 8 position sizing realism | Open |
+| 4 | ~~Streamlit sufficient through Phase 5, or is a richer UI needed earlier?~~ | — | **Resolved:** Streamlit is a disposable internal tool for Phases 1–5 only — not tested, not specified, no promotion path. The Next.js app in `FRONTEND_SPEC.md` is the only specified deliverable, built in Phase 11. See §14 extension playbooks note and `FRONTEND_SPEC.md` §3 |
+| 5 | Timeline and trigger for acquiring paid CME data | Phase 9 start | Open |
 | 6 | Is vectorbt open-source sufficient, or will the Pro version be needed? | Phase 4 — revisit only if the fast lane becomes a measured bottleneck | Deferred |
-| 7 | Which sentiment/news vendor, and at what budget? | Sentiment module | Deferred |
+| 7 | Which sentiment/news vendor, and at what budget? | Concrete provider behind the Phase 6 framework — see `PROVIDER_ARCHITECTURE.md` §5 | Deferred |
+| 8 | Which fundamentals vendor for the equities phase, and at what budget? | Concrete provider behind the Phase 6 framework — see `PROVIDER_ARCHITECTURE.md` §6 | Deferred |
 
 ---
 

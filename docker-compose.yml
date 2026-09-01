@@ -1,4 +1,4 @@
-                                                                                                                                                   # fmengine local infrastructure stack
+# fmengine local infrastructure stack
 # Memory limits are deliberate: total capped ~6GB to leave room for Ollama + backtest workers
 # on a 24GB machine. Ollama runs natively on macOS (Metal GPU), NOT in Docker.
 
@@ -13,8 +13,8 @@ services:
       - "8812:8812"   # postgres wire protocol
       - "9009:9009"   # InfluxDB line protocol ingest
     environment:
-      QDB_PG_USER: ${QUESTDB_USER:-admin}
-      QDB_PG_PASSWORD: ${QUESTDB_PASSWORD:-quest}
+      QDB_PG_USER: ${QUESTDB_USER:?QUESTDB_USER is not set. Copy .env.example to .env and set real credentials before running make up.}
+      QDB_PG_PASSWORD: ${QUESTDB_PASSWORD:?QUESTDB_PASSWORD is not set. Copy .env.example to .env and set real credentials before running make up.}
       # Keep QuestDB's own memory footprint predictable
       QDB_SHARED_WORKER_COUNT: "4"
       QDB_CAIRO_SQL_COPY_ROOT: /var/lib/questdb/import
@@ -38,8 +38,8 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-fmtrader}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fmtrader}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is not set. Copy .env.example to .env and set real credentials before running make up.}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set. Copy .env.example to .env and set real credentials before running make up.}
       POSTGRES_MULTIPLE_DATABASES: fmtrader,temporal,temporal_visibility,mlflow
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -49,7 +49,7 @@ services:
         limits:
           memory: 1G
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fmtrader}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?POSTGRES_USER is not set}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -66,8 +66,8 @@ services:
     environment:
       DB: postgres12
       DB_PORT: 5432
-      POSTGRES_USER: ${POSTGRES_USER:-fmtrader}
-      POSTGRES_PWD: ${POSTGRES_PASSWORD:-fmtrader}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is not set. Copy .env.example to .env first.}
+      POSTGRES_PWD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set. Copy .env.example to .env first.}
       POSTGRES_SEEDS: postgres
       DBNAME: temporal
       VISIBILITY_DBNAME: temporal_visibility
@@ -122,7 +122,7 @@ services:
       sh -c "pip install --no-cache-dir psycopg2-binary &&
              mlflow server
              --host 0.0.0.0 --port 5000
-             --backend-store-uri postgresql://${POSTGRES_USER:-fmtrader}:${POSTGRES_PASSWORD:-fmtrader}@postgres:5432/mlflow
+             --backend-store-uri postgresql://${POSTGRES_USER:?POSTGRES_USER is not set}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set}@postgres:5432/mlflow
              --default-artifact-root /mlflow/artifacts"
     volumes:
       - mlflow_artifacts:/mlflow/artifacts

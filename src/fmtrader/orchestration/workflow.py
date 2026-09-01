@@ -2,6 +2,10 @@
 
 Sandbox-safe: no logging, HTTP, or activity module imports at workflow load time.
 Activities are referenced by registered name strings.
+
+History hygiene:
+- Activities take ``campaign_id`` only; full state (leaderboard, spaces) stays on disk.
+- ``continue_as_new`` every ``CONTINUE_EVERY`` generations resets history for long soaks.
 """
 
 from __future__ import annotations
@@ -17,6 +21,10 @@ except ImportError:  # pragma: no cover
     RetryPolicy = None  # type: ignore[misc, assignment]
 
 
+# Generations per continue-as-new window (keeps history well under Temporal limits).
+CONTINUE_EVERY = 25
+
+
 if workflow is not None:
 
     @workflow.defn(name="ResearchCampaignWorkflow")
@@ -25,7 +33,7 @@ if workflow is not None:
             self._pause = False
             self._abort = False
             self._budget_override: dict[str, float] | None = None
-            self._state: dict[str, Any] = {}
+            self._snapshot: dict[str, Any] = {}
 
         @workflow.signal
         def pause(self) -> None:
@@ -57,57 +65,102 @@ if workflow is not None:
             return {
                 "pause": self._pause,
                 "abort": self._abort,
-                "state": self._state,
+                "snapshot": dict(self._snapshot),
             }
 
         @workflow.run
-        async def run(self, state_dict: dict[str, Any]) -> dict[str, Any]:
-            self._state = dict(state_dict)
-            max_gen = int(self._state.get("config", {}).get("max_generations", 3))
-            retry = RetryPolicy(maximum_attempts=3)
+        async def run(self, args: dict[str, Any]) -> dict[str, Any]:
+            # Accept legacy full state_dict (campaign_id key) or slim {campaign_id: ...}
+            campaign_id = str(args.get("campaign_id") or "")
+            if not campaign_id:
+                raise ValueError("ResearchCampaignWorkflow requires campaign_id")
 
-            while int(self._state.get("generation", 0)) < max_gen:
+            self._pause = bool(args.get("pause", False))
+            self._abort = bool(args.get("abort", False))
+            if isinstance(args.get("budget_override"), dict):
+                self._budget_override = dict(args["budget_override"])
+
+            retry = RetryPolicy(maximum_attempts=3)
+            act_to = timedelta(hours=2)
+            short_to = timedelta(minutes=2)
+
+            self._snapshot = await workflow.execute_activity(
+                "load_campaign_snapshot_activity",
+                campaign_id,
+                start_to_close_timeout=short_to,
+                retry_policy=retry,
+            )
+            max_gen = int(self._snapshot.get("max_generations", 3))
+            generation = int(self._snapshot.get("generation", 0))
+            gens_this_run = 0
+
+            while generation < max_gen:
                 if self._abort:
-                    self._state["abort_requested"] = True
-                    self._state["status"] = "aborted"
+                    self._snapshot = await workflow.execute_activity(
+                        "run_generation_activity",
+                        {
+                            "campaign_id": campaign_id,
+                            "abort_requested": True,
+                        },
+                        start_to_close_timeout=short_to,
+                        retry_policy=retry,
+                    )
                     break
+
                 if self._pause:
-                    self._state["pause_requested"] = True
-                    self._state["status"] = "paused"
                     await workflow.wait_condition(lambda: (not self._pause) or self._abort)
                     if self._abort:
-                        self._state["abort_requested"] = True
-                        self._state["status"] = "aborted"
-                        break
-                    self._state["pause_requested"] = False
+                        continue
                     self._pause = False
 
+                payload: dict[str, Any] = {
+                    "campaign_id": campaign_id,
+                    "pause_requested": False,
+                    "abort_requested": False,
+                }
                 if self._budget_override:
-                    self._state["budget_override"] = self._budget_override
+                    payload["budget_override"] = self._budget_override
 
-                self._state = await workflow.execute_activity(
+                self._snapshot = await workflow.execute_activity(
                     "run_generation_activity",
-                    self._state,
-                    start_to_close_timeout=timedelta(hours=2),
+                    payload,
+                    start_to_close_timeout=act_to,
                     heartbeat_timeout=timedelta(minutes=5),
                     retry_policy=retry,
                 )
-                self._state = await workflow.execute_activity(
+                self._snapshot = await workflow.execute_activity(
                     "checkpoint_activity",
-                    self._state,
-                    start_to_close_timeout=timedelta(minutes=2),
+                    {"campaign_id": campaign_id},
+                    start_to_close_timeout=short_to,
                     retry_policy=retry,
                 )
 
-            if self._state.get("status") not in {"aborted", "paused", "failed"}:
-                self._state["status"] = "completed"
-                self._state = await workflow.execute_activity(
+                generation = int(self._snapshot.get("generation", generation))
+                status = str(self._snapshot.get("status", "running"))
+                gens_this_run += 1
+
+                if status in {"paused", "aborted", "failed"}:
+                    break
+
+                if gens_this_run >= CONTINUE_EVERY and generation < max_gen:
+                    await workflow.continue_as_new(
+                        {
+                            "campaign_id": campaign_id,
+                            "pause": self._pause,
+                            "abort": self._abort,
+                            "budget_override": self._budget_override,
+                        }
+                    )
+
+            status = str(self._snapshot.get("status", "running"))
+            if status not in {"aborted", "paused", "failed"}:
+                self._snapshot = await workflow.execute_activity(
                     "finalize_campaign_activity",
-                    self._state,
-                    start_to_close_timeout=timedelta(minutes=2),
+                    {"campaign_id": campaign_id},
+                    start_to_close_timeout=short_to,
                     retry_policy=retry,
                 )
-            return self._state
+            return dict(self._snapshot)
 
 else:
 

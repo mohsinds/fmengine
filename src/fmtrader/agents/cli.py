@@ -54,30 +54,48 @@ def campaign_new(
         log.info("campaign_local_done", campaign_id=state.campaign_id, status=state.status)
         return
 
-    # Temporal path
     try:
-        from temporalio.client import Client
+        wid = asyncio.run(_start_temporal(state.campaign_id, task_queue=task_queue))
     except ImportError as exc:
         console.print(f"[red]temporalio required for --temporal: {exc}[/red]")
         raise typer.Exit(code=1) from exc
-
-    async def _start() -> str:
-        from fmtrader.config.settings import get_settings
-        from fmtrader.orchestration.workflow import ResearchCampaignWorkflow
-
-        settings = get_settings()
-        client = await Client.connect(f"{settings.temporal_host}:{settings.temporal_port}")
-        handle = await client.start_workflow(
-            ResearchCampaignWorkflow.run,
-            state.to_dict(),
-            id=state.campaign_id,
-            task_queue=task_queue,
-        )
-        return str(handle.id)
-
-    wid = asyncio.run(_start())
     console.print(f"temporal workflow started id={wid}")
     log.info("campaign_temporal_started", workflow_id=wid)
+
+
+@campaign_app.command("continue")
+def campaign_continue(
+    campaign_id: str = typer.Argument(...),
+    task_queue: str = typer.Option("fmtrader-research", "--task-queue"),
+) -> None:
+    """Resume a campaign from the filesystem checkpoint via Temporal (after failure)."""
+    configure_logging()
+    log = get_logger("fmtrader.campaign")
+    from fmtrader.agents.runner import CampaignStore
+
+    store = CampaignStore()
+    state = store.load(campaign_id)
+    if state.status == "completed" and state.generation >= state.config.max_generations:
+        console.print(f"[yellow]campaign already completed at gen={state.generation}[/yellow]")
+        raise typer.Exit(code=0)
+
+    state.pause_requested = False
+    state.abort_requested = False
+    state.last_error = None
+    state.status = "running"
+    store.save(state)
+
+    wid = asyncio.run(_start_temporal(campaign_id, task_queue=task_queue, reuse=True))
+    console.print(
+        f"continued campaign_id={campaign_id} from generation={state.generation} "
+        f"workflow_id={wid}"
+    )
+    log.info(
+        "campaign_temporal_continued",
+        workflow_id=wid,
+        campaign_id=campaign_id,
+        generation=state.generation,
+    )
 
 
 @campaign_app.command("status")
@@ -92,6 +110,7 @@ def campaign_status(campaign_id: str = typer.Argument(...)) -> None:
     for k in ("status", "generation", "last_error"):
         table.add_row(k, str(getattr(state, k)))
     table.add_row("survivors", str(len(state.survivors)))
+    table.add_row("leaderboard", str(len(state.leaderboard)))
     table.add_row("journals", str(len(state.journal_paths)))
     console.print(table)
 
@@ -103,18 +122,27 @@ def campaign_pause(campaign_id: str = typer.Argument(...)) -> None:
 
     state = signal_pause(campaign_id)
     console.print(f"paused campaign_id={campaign_id} status={state.status}")
-    # Also signal Temporal if running
     asyncio.run(_signal_temporal(campaign_id, "pause"))
 
 
 @campaign_app.command("resume")
 def campaign_resume(campaign_id: str = typer.Argument(...)) -> None:
     configure_logging()
-    from fmtrader.agents.runner import signal_resume
+    from fmtrader.agents.runner import CampaignStore
 
-    asyncio.run(_signal_temporal(campaign_id, "resume"))
-    state = signal_resume(campaign_id)
-    console.print(f"resumed campaign_id={campaign_id} status={state.status}")
+    signaled = asyncio.run(_signal_temporal(campaign_id, "resume"))
+    if signaled:
+        store = CampaignStore()
+        state = store.load(campaign_id)
+        state.pause_requested = False
+        if state.status == "paused":
+            state.status = "running"
+        store.save(state)
+        console.print(f"resumed (signal) campaign_id={campaign_id} status={state.status}")
+        return
+
+    console.print("[yellow]Temporal signal failed; starting continue from checkpoint[/yellow]")
+    campaign_continue(campaign_id)
 
 
 @campaign_app.command("abort")
@@ -136,15 +164,48 @@ def campaign_report(campaign_id: str = typer.Argument(...)) -> None:
     console.print(Markdown(md))
 
 
-async def _signal_temporal(campaign_id: str, signal: str) -> None:
+async def _start_temporal(
+    campaign_id: str,
+    *,
+    task_queue: str = "fmtrader-research",
+    reuse: bool = False,
+) -> str:
+    from temporalio.client import Client
+    from temporalio.common import WorkflowIDReusePolicy
+
+    from fmtrader.config.settings import get_settings
+    from fmtrader.orchestration.workflow import ResearchCampaignWorkflow
+
+    settings = get_settings()
+    client = await Client.connect(f"{settings.temporal_host}:{settings.temporal_port}")
+    policy = (
+        WorkflowIDReusePolicy.ALLOW_DUPLICATE
+        if reuse
+        else WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY
+    )
+    handle = await client.start_workflow(
+        ResearchCampaignWorkflow.run,
+        {"campaign_id": campaign_id},
+        id=campaign_id,
+        task_queue=task_queue,
+        id_reuse_policy=policy,
+    )
+    return str(handle.id)
+
+
+async def _signal_temporal(campaign_id: str, signal: str) -> bool:
     try:
-        from temporalio.client import Client
+        from temporalio.client import Client, WorkflowExecutionStatus
 
         from fmtrader.config.settings import get_settings
 
         settings = get_settings()
         client = await Client.connect(f"{settings.temporal_host}:{settings.temporal_port}")
         handle = client.get_workflow_handle(campaign_id)
+        desc = await handle.describe()
+        if desc.status != WorkflowExecutionStatus.RUNNING:
+            return False
         await handle.signal(signal)
+        return True
     except Exception:
-        pass
+        return False

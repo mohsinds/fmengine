@@ -99,6 +99,16 @@ uv run fmtrader campaign new --config configs/campaigns/trial_multi_long.yaml --
 
 Uses `configs/spaces/multi_family_dense.yaml` (~1k valid cells), `refine_space: false`, full bar history (`max_bars: null`), up to 2000 generations. Expect multi-day runtime. Monitor Temporal UI / `fmtrader campaign status <id>` / MLflow.
 
+If a long workflow dies with **Workflow history size exceeds limit**, the fix is already in-tree (slim payloads + continue-as-new every 25 gens). Resume from the disk checkpoint without redoing finished generations:
+
+```bash
+# restart worker so it loads the new workflow/activities
+make worker
+
+uv run fmtrader campaign continue <campaign_id>
+uv run fmtrader campaign status <campaign_id>
+```
+
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 cd /path/to/fmengine

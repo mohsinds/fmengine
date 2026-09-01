@@ -25,6 +25,8 @@ data/nautilus/*
 !data/nautilus/.gitkeep
 data/snapshots/*
 !data/snapshots/.gitkeep
+data/features/*
+!data/features/.gitkeep
 artifacts/*
 !artifacts/.gitkeep
 download/*.csv

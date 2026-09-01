@@ -11,12 +11,25 @@ def test_import_fmtrader() -> None:
 
 def test_import_core_and_config() -> None:
     from fmtrader import config, core
-    from fmtrader.core import InstrumentClass, Side
+    from fmtrader.core import Bar, InstrumentClass, Side
 
     assert InstrumentClass.SPOT_CFD.value == "spot_cfd"
     assert Side.BID.value == "bid"
+    assert Bar is not None
     assert config.get_settings is not None
     assert core.FmtraderError is not None
+
+
+def test_import_data_layer() -> None:
+    from fmtrader.data.adapters import DukascopyAdapter
+    from fmtrader.data.calendars import get_calendar
+    from fmtrader.data.catalog import Catalog
+    from fmtrader.data.ingest import ingest
+
+    assert DukascopyAdapter is not None
+    assert get_calendar("xauusd_fx").name == "xauusd_fx"
+    assert Catalog is not None
+    assert callable(ingest)
 
 
 def test_import_system() -> None:

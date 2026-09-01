@@ -1,0 +1,122 @@
+# Baseline feature set for XAUUSD M1 bid (no volume / spread).
+# Target: ~50 columns, float32 store, trailing-only indicators.
+name: baseline
+version: "1.0.0"
+description: Phase 3 baseline feature matrix for gold CFD validation
+
+features:
+  # --- trend ---
+  - indicator: sma
+    params: { period: 20 }
+    alias: trend_sma_20
+  - indicator: sma
+    params: { period: 50 }
+    alias: trend_sma_50
+  - indicator: ema
+    params: { period: 12 }
+    alias: trend_ema_12
+  - indicator: ema
+    params: { period: 26 }
+    alias: trend_ema_26
+  - indicator: wma
+    params: { period: 20 }
+    alias: trend_wma_20
+  - indicator: hma
+    params: { period: 20 }
+    alias: trend_hma_20
+  - indicator: dema
+    params: { period: 20 }
+    alias: trend_dema_20
+  - indicator: tema
+    params: { period: 20 }
+    alias: trend_tema_20
+  - indicator: adx
+    params: { period: 14 }
+  - indicator: aroon
+    params: { period: 25 }
+  - indicator: supertrend
+    params: { period: 10, multiplier: 3.0 }
+    alias: trend_supertrend_10_3
+  - indicator: linreg_slope
+    params: { period: 20 }
+    alias: trend_linreg_slope_20
+  - indicator: ichimoku
+    params: { tenkan: 9, kijun: 26, senkou_b: 52 }
+
+  # --- momentum ---
+  - indicator: rsi
+    params: { period: 14 }
+    alias: momentum_rsi_14
+  - indicator: rsi
+    params: { period: 2 }
+    alias: momentum_rsi_2
+  - indicator: rsi
+    params: { period: 7 }
+    alias: momentum_rsi_7
+  - indicator: stochastic
+    params: { k_period: 14, d_period: 3 }
+  - indicator: cci
+    params: { period: 20 }
+    alias: momentum_cci_20
+  - indicator: willr
+    params: { period: 14 }
+    alias: momentum_willr_14
+  - indicator: roc
+    params: { period: 10 }
+    alias: momentum_roc_10
+  - indicator: macd
+    params: { fast: 12, slow: 26, signal: 9 }
+  - indicator: tsi
+    params: { long_period: 25, short_period: 13 }
+    alias: momentum_tsi_25_13
+
+  # --- volatility ---
+  - indicator: atr
+    params: { period: 14 }
+    alias: volatility_atr_14
+  - indicator: natr
+    params: { period: 14 }
+    alias: volatility_natr_14
+  - indicator: bollinger
+    params: { period: 20, num_std: 2.0 }
+  - indicator: keltner
+    params: { period: 20, atr_period: 10, multiplier: 1.5 }
+  - indicator: donchian
+    params: { period: 20 }
+  - indicator: chaikin_volatility
+    params: { ema_period: 10, roc_period: 10 }
+    alias: volatility_chaikin_10_10
+  - indicator: parkinson
+    params: { period: 20 }
+    alias: volatility_parkinson_20
+  - indicator: garman_klass
+    params: { period: 20 }
+    alias: volatility_gk_20
+  - indicator: yang_zhang
+    params: { period: 20 }
+    alias: volatility_yz_20
+  - indicator: realized_vol
+    params: { period: 20 }
+    alias: volatility_realized_20
+  - indicator: quantile_vol_regime
+    params: { vol_period: 20, rank_window: 1440, low_q: 0.33, high_q: 0.66 }
+    alias: regime_vol_quantile
+
+  # --- session ---
+  - indicator: minute_of_day
+    alias: session_minute_of_day
+  - indicator: day_of_week
+    alias: session_day_of_week
+  - indicator: session_bucket
+    alias: session_bucket
+  - indicator: time_since_session_open
+    params: { week_open_weekday: 6, week_open_hour: 22, week_open_minute: 0 }
+    alias: session_time_since_open
+
+# Labeling is opt-in: O(n * horizon) and intentionally off for the full M1 build.
+labeling:
+  enabled: false
+  atr_period: 14
+  pt_mult: 2.0
+  sl_mult: 2.0
+  max_horizon: 60

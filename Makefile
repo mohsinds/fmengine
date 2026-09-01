@@ -33,10 +33,18 @@ resources:
 	$(UV) run fmtrader system resources
 
 ingest:
-	$(error Phase 2 not implemented yet — see SETUP_PROMPT.md)
+	$(UV) run fmtrader data ingest \
+		--adapter dukascopy \
+		--path download/xauusd-m1-bid-2021-01-01-2026-08-31.csv \
+		--symbol XAUUSD \
+		--timeframe 1m \
+		--instrument-class spot_cfd \
+		--side bid
 
 features:
-	$(error Phase 3 not implemented yet — see SETUP_PROMPT.md)
+	$(UV) run fmtrader features build \
+		--dataset xauusd_1m_bid_2021-01-03_2026-08-30 \
+		--set configs/features/baseline.yaml
 
 sweep:
 	$(error Phase 4 not implemented yet — see SETUP_PROMPT.md)

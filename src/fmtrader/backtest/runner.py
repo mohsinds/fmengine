@@ -27,8 +27,12 @@ from fmtrader.system.logging import get_logger
 log = get_logger(__name__)
 
 # Register built-in strategies
+from fmtrader.strategy.library import bollinger_breakout as _bb  # noqa: E402, F401
 from fmtrader.strategy.library import buy_and_hold as _bah  # noqa: E402, F401
 from fmtrader.strategy.library import ema_cross as _ema  # noqa: E402, F401
+from fmtrader.strategy.library import macd_cross as _macd  # noqa: E402, F401
+from fmtrader.strategy.library import rsi_mean_reversion as _rsi  # noqa: E402, F401
+from fmtrader.strategy.library import supertrend_trend as _st  # noqa: E402, F401
 
 
 def _record_trial(man: ExecutionManifest, *, source: str = "manual") -> None:
@@ -160,6 +164,7 @@ def run_backtest(
     if trial_source == "manual" and not run_sensitivity:
         trial_source = "sweep"
     _record_trial(man, source=trial_source)
+    _log_mlflow(man, source=trial_source)
     log.info(
         "backtest_complete",
         execution_id=exec_id,
@@ -169,6 +174,57 @@ def run_backtest(
         fragile=man.fragile,
     )
     return man
+
+
+def _log_mlflow(man: ExecutionManifest, *, source: str) -> None:
+    """Best-effort MLflow logging — never fails the backtest."""
+    try:
+        from fmtrader.api.tracking import (
+            configure_tracking,
+            end_run,
+            log_metrics,
+            log_params,
+            mlflow_available,
+            start_run,
+        )
+        from fmtrader.config.settings import get_settings
+
+        if not mlflow_available():
+            return
+        configure_tracking(tracking_uri=get_settings().mlflow_url)
+        start_run(
+            run_name=f"{man.strategy}-{man.execution_id[:8]}",
+            tags={
+                "strategy": man.strategy,
+                "dataset_id": man.dataset_id,
+                "lane": man.lane,
+                "source": source,
+                "execution_id": man.execution_id,
+            },
+        )
+        log_params(
+            {
+                "strategy": man.strategy,
+                "dataset_id": man.dataset_id,
+                "lane": man.lane,
+                "source": source,
+                "cost_multiplier": man.cost_multiplier,
+                "seed": man.seed,
+                **{f"param_{k}": v for k, v in (man.params or {}).items()},
+            }
+        )
+        metrics: dict[str, float] = {}
+        for k, v in (man.metrics_net or {}).items():
+            if isinstance(v, (int, float)):
+                metrics[f"net_{k}"] = float(v)
+        if man.cost_drag_pct is not None:
+            metrics["cost_drag_pct"] = float(man.cost_drag_pct)
+        metrics["trade_count"] = float(man.trade_count)
+        metrics["fragile"] = 1.0 if man.fragile else 0.0
+        log_metrics(metrics)
+        end_run()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("mlflow_log_failed", error=str(exc), execution_id=man.execution_id)
 
 
 def _sweep_one(payload: dict[str, Any]) -> dict[str, Any]:

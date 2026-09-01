@@ -1,0 +1,23 @@
+# Multi-strategy short trial — local smoke / Lab demo.
+name: trial_multi_short
+dataset_id: xauusd_1m_bid_2021-01-03_2026-08-30
+strategies:
+  - ema_cross
+  - rsi_mean_reversion
+  - macd_cross
+  - bollinger_breakout
+  - supertrend_trend
+space_path: configs/spaces/multi_family.yaml
+max_generations: 2
+proposals_per_generation: 5
+shortlist_size: 2
+max_sweep_configs: 20
+workers: 2
+max_bars: 3000
+run_fidelity: false
+use_stub_llm: true
+seed: 0
+budget:
+  per_campaign_usd: 2.0
+  per_day_usd: 2.0
+  per_generation_usd: 1.0

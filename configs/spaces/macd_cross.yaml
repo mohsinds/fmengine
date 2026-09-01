@@ -1,0 +1,5 @@
+name: macd_cross
+grid:
+  fast: [8, 12]
+  slow: [21, 26]
+  signal: [5, 9]

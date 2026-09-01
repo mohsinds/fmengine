@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from fmtrader.agents.campaign import CampaignState, load_search_space
+from fmtrader.agents.campaign import CampaignState, load_search_spaces, bind_search_spaces
 from fmtrader.agents.journal import ResearchJournal
 from fmtrader.agents.llm import LLMRouter
 from fmtrader.agents.proposals import (
@@ -25,6 +25,16 @@ from fmtrader.system.logging import get_logger
 log = get_logger(__name__)
 
 
+def ensure_spaces(state: CampaignState) -> dict[str, dict[str, list[Any]]]:
+    if state.search_spaces:
+        return state.search_spaces
+    raw = load_search_spaces(Path(state.config.space_path))
+    spaces = bind_search_spaces(raw, list(state.config.strategies))
+    state.search_spaces = spaces
+    state.search_space = spaces.get(state.config.strategy) or next(iter(spaces.values()), {})
+    return spaces
+
+
 def _sample_space(
     space: dict[str, list[Any]], *, n: int, seed: int, strategy: str
 ) -> list[dict[str, Any]]:
@@ -32,9 +42,24 @@ def _sample_space(
     if not keys:
         return [{"strategy": strategy, "params": {}, "rationale": "empty space"}]
     combos = list(itertools.product(*(space[k] for k in keys)))
-    # Deterministic subsample
-    step = max(1, len(combos) // max(n, 1))
-    picked = combos[seed % max(1, step) :: step][:n]
+    # Prefer configs not already in the trial registry (exhaustive long soaks)
+    try:
+        from fmtrader.backtest.validation.registry import config_hash, default_registry
+
+        reg = default_registry()
+        fresh: list[tuple[Any, ...]] = []
+        seen: list[tuple[Any, ...]] = []
+        for combo in combos:
+            params = {k: v for k, v in zip(keys, combo, strict=True)}
+            if reg.has_config(config_hash(strategy, params)):
+                seen.append(combo)
+            else:
+                fresh.append(combo)
+        ordered = fresh if fresh else seen
+    except Exception:
+        ordered = combos
+    step = max(1, len(ordered) // max(n, 1))
+    picked = ordered[seed % max(1, step) :: step][:n]
     out: list[dict[str, Any]] = []
     for combo in picked:
         params = {k: v for k, v in zip(keys, combo, strict=True)}
@@ -48,14 +73,34 @@ def _sample_space(
     return out
 
 
+def _sample_multi(
+    spaces: dict[str, dict[str, list[Any]]],
+    *,
+    strategies: list[str],
+    n: int,
+    seed: int,
+) -> list[dict[str, Any]]:
+    """Round-robin grid samples across strategies."""
+    if not strategies:
+        return []
+    base = max(1, n // len(strategies))
+    rem = n - base * len(strategies)
+    out: list[dict[str, Any]] = []
+    for i, name in enumerate(strategies):
+        take = base + (1 if i < rem else 0)
+        space = spaces.get(name) or {}
+        out.extend(_sample_space(space, n=take, seed=seed + i * 17, strategy=name))
+    return out[:n]
+
+
 def hypothesize(state: CampaignState, router: LLMRouter) -> list[dict[str, Any]]:
     """Propose N candidate configs. Uses LLM when available; falls back to grid sample."""
-    space = state.search_space or load_search_space(Path(state.config.space_path))
-    state.search_space = space
+    spaces = ensure_spaces(state)
+    strategies = list(state.config.strategies)
     n = state.config.proposals_per_generation
     prompt = (
-        f"Propose {n} JSON objects for strategy {state.config.strategy} "
-        f"with params from space {json.dumps(space)}. "
+        f"Propose {n} JSON objects across strategies {strategies} "
+        f"with params from spaces {json.dumps(spaces)}. "
         'Return a JSON array of {"strategy","params","rationale"}.'
     )
     try:
@@ -68,12 +113,15 @@ def hypothesize(state: CampaignState, router: LLMRouter) -> list[dict[str, Any]]
         parsed = parse_proposals_from_llm_text(str(result["text"]))
         if parsed:
             for p in parsed:
-                p.setdefault("strategy", state.config.strategy)
+                p.setdefault("strategy", strategies[0])
             return parsed[:n]
     except Exception as exc:
         log.warning("hypothesize_llm_failed", error=str(exc))
-    return _sample_space(
-        space, n=n, seed=state.config.seed + state.generation, strategy=state.config.strategy
+    return _sample_multi(
+        spaces,
+        strategies=strategies,
+        n=n,
+        seed=state.config.seed + state.generation,
     )
 
 
@@ -84,14 +132,18 @@ def validate_proposals(
     registry: TrialRegistry | None = None,
 ) -> list[StrategyProposal]:
     registry = registry or default_registry()
+    spaces = ensure_spaces(state)
     valid: list[StrategyProposal] = []
     for item in raw:
         try:
+            strat = str(item.get("strategy") or state.config.strategy)
             prop = validate_proposal(
                 item,
-                search_space=state.search_space,
+                search_space=spaces.get(strat),
                 registry=registry,
             )
+            if strat not in state.config.strategies:
+                raise AgentError(f"strategy {strat!r} not in campaign strategies")
             valid.append(prop)
         except AgentError as exc:
             log.info("proposal_rejected", reason=str(exc), proposal=item)
@@ -130,6 +182,7 @@ def fast_sweep(
                     "trade_count": man.trade_count,
                     "cost_drag_pct": man.cost_drag_pct,
                     "lane": "vectorbt",
+                    "generation": state.generation,
                 }
             )
         except Exception as exc:
@@ -141,6 +194,7 @@ def fast_sweep(
                     "error": str(exc),
                     "sharpe": None,
                     "lane": "vectorbt",
+                    "generation": state.generation,
                 }
             )
     return results
@@ -153,7 +207,8 @@ def shortlist(
     registry: TrialRegistry | None = None,
 ) -> list[dict[str, Any]]:
     registry = registry or default_registry()
-    n_trials = max(registry.count(strategy=state.config.strategy), 1)
+    # DSR uses total trial count (multiple-testing across all strategies in campaign)
+    n_trials = max(registry.count(), 1)
     scored: list[dict[str, Any]] = []
     for r in results:
         if r.get("sharpe") is None or r.get("error"):
@@ -171,18 +226,52 @@ def shortlist(
             trade_count=int(r.get("trade_count") or 0),
             holdout_consumed=False,
         )
-        item = {**r, "dsr": dsr, "verdict": gate.verdict}
-        if gate.verdict not in {"NOISE"}:
-            scored.append(item)
-        else:
+        item = {
+            **r,
+            "dsr": dsr,
+            "pbo": 0.4,
+            "verdict": gate.verdict,
+        }
+        scored.append(item)
+        if gate.verdict == "NOISE":
             log.info("shortlist_drop_noise", params=r.get("params"), dsr=dsr)
-    scored.sort(key=lambda x: float(x.get("sharpe") or -999), reverse=True)
-    # If everything is NOISE, still keep top-1 for journal honesty
-    if not scored and results:
-        ok = [r for r in results if r.get("sharpe") is not None]
-        ok.sort(key=lambda x: float(x.get("sharpe") or -999), reverse=True)
-        return [{**ok[0], "verdict": "NOISE", "dsr": 0.0}][:1] if ok else []
-    return scored[: state.config.shortlist_size]
+    keep = [x for x in scored if x.get("verdict") != "NOISE"]
+    keep.sort(key=lambda x: float(x.get("sharpe") or -999), reverse=True)
+    if not keep and scored:
+        scored.sort(key=lambda x: float(x.get("sharpe") or -999), reverse=True)
+        return scored[:1]
+    return keep[: state.config.shortlist_size]
+
+
+def score_results(
+    results: list[dict[str, Any]],
+    state: CampaignState,
+    *,
+    registry: TrialRegistry | None = None,
+) -> list[dict[str, Any]]:
+    """Attach DSR/verdict to every successful result (for journals + leaderboard)."""
+    registry = registry or default_registry()
+    n_trials = max(registry.count(), 1)
+    out: list[dict[str, Any]] = []
+    for r in results:
+        if r.get("sharpe") is None or r.get("error"):
+            out.append({**r, "dsr": None, "verdict": "ERROR" if r.get("error") else "NA"})
+            continue
+        sharpe = float(r["sharpe"])
+        dsr = deflated_sharpe(
+            sharpe, n_trials=n_trials, n_returns=max((state.config.max_bars or 5000) - 1, 2)
+        )
+        gate = evaluate_gates(
+            dsr=dsr,
+            pbo=0.4,
+            net_sharpe_1x=sharpe,
+            net_sharpe_15x=sharpe,
+            cost_drag_pct=float(r.get("cost_drag_pct") or 0.0),
+            trade_count=int(r.get("trade_count") or 0),
+            holdout_consumed=False,
+        )
+        out.append({**r, "dsr": dsr, "pbo": 0.4, "verdict": gate.verdict})
+    return out
 
 
 def fidelity_eval(shortlisted: list[dict[str, Any]], state: CampaignState) -> list[dict[str, Any]]:
@@ -222,7 +311,7 @@ def critique_and_select(
     router: LLMRouter,
     results: list[dict[str, Any]],
     shortlisted: list[dict[str, Any]],
-) -> tuple[str, str, list[dict[str, Any]], dict[str, list[Any]]]:
+) -> tuple[str, str, list[dict[str, Any]], dict[str, dict[str, list[Any]]]]:
     prompt = (
         f"Critique these shortlist results for campaign {state.campaign_id} gen {state.generation}: "
         f"{json.dumps(shortlisted)[:2000]}. Suggest next search space refinement as JSON."
@@ -241,19 +330,29 @@ def critique_and_select(
         critique = f"(critique unavailable: {exc})"
 
     survivors = shortlisted[: state.config.shortlist_size]
-    # Shrink space around survivor params when possible
-    next_space = dict(state.search_space)
-    if survivors and state.search_space:
-        best = survivors[0].get("params") or {}
-        for k, v in best.items():
-            if k in next_space and isinstance(next_space[k], list) and v in next_space[k]:
-                vals = next_space[k]
-                idx = vals.index(v)
-                lo = max(0, idx - 1)
-                hi = min(len(vals), idx + 2)
-                next_space[k] = vals[lo:hi]
-    decision = f"Survivors={len(survivors)}. " + decision
-    return critique, decision, survivors, next_space
+    spaces = {k: dict(v) for k, v in ensure_spaces(state).items()}
+    if state.config.refine_space:
+        # Shrink each strategy's space around its best survivor params
+        by_strat: dict[str, dict[str, Any]] = {}
+        for s in survivors:
+            name = str(s.get("strategy") or "")
+            if name and name not in by_strat:
+                by_strat[name] = dict(s.get("params") or {})
+        for name, best in by_strat.items():
+            space = spaces.get(name)
+            if not space:
+                continue
+            for k, v in best.items():
+                if k in space and isinstance(space[k], list) and v in space[k]:
+                    vals = space[k]
+                    idx = vals.index(v)
+                    lo = max(0, idx - 1)
+                    hi = min(len(vals), idx + 2)
+                    space[k] = vals[lo:hi]
+        decision = f"Survivors={len(survivors)}; space refined. " + decision
+    else:
+        decision = f"Survivors={len(survivors)}; space held open (refine_space=false). " + decision
+    return critique, decision, survivors, spaces
 
 
 def write_journal(
@@ -282,3 +381,30 @@ def write_journal(
     )
     state.journal_paths.append(str(path))
     return path
+
+
+def build_leaderboard_summary(state: CampaignState) -> dict[str, Any]:
+    rows = [r for r in state.leaderboard if r.get("sharpe") is not None]
+    rows.sort(key=lambda x: float(x.get("sharpe") or -999), reverse=True)
+    best = rows[0] if rows else None
+    by_strategy: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        name = str(r.get("strategy"))
+        if name not in by_strategy:
+            by_strategy[name] = r
+    why = ""
+    if best:
+        why = (
+            f"Highest net Sharpe among {len(rows)} scored trials "
+            f"(DSR={best.get('dsr')}, verdict={best.get('verdict')}, "
+            f"cost_drag={best.get('cost_drag_pct')}, trades={best.get('trade_count')}). "
+            "PBO is a conservative placeholder (0.4) until CSCV runs on fidelity lane."
+        )
+    return {
+        "n_trials": len(state.leaderboard),
+        "n_scored": len(rows),
+        "best_overall": best,
+        "best_by_strategy": by_strategy,
+        "why": why,
+        "top10": rows[:10],
+    }

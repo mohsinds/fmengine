@@ -120,8 +120,80 @@ class ResearchJournal:
             fh.write("\n\n---\n\n")
         return path
 
+    def write_summary(self, campaign_id: str, summary: dict[str, Any]) -> Path:
+        lines = [
+            f"# Campaign `{campaign_id}` — Leaderboard Summary",
+            "",
+            f"_Written {datetime.now(tz=UTC).isoformat()}_",
+            "",
+            f"Trials recorded: **{summary.get('n_trials')}** · scored: **{summary.get('n_scored')}**",
+            "",
+            "## Best overall",
+            "",
+        ]
+        best = summary.get("best_overall")
+        if not best:
+            lines.append("_No scored trials._")
+        else:
+            lines.extend(
+                [
+                    f"- **strategy:** `{best.get('strategy')}`",
+                    f"- **params:** `{best.get('params')}`",
+                    f"- **Sharpe (net):** {best.get('sharpe')}",
+                    f"- **DSR:** {best.get('dsr')}",
+                    f"- **PBO:** {best.get('pbo')} _(placeholder until CSCV)_",
+                    f"- **cost drag %:** {best.get('cost_drag_pct')}",
+                    f"- **trades:** {best.get('trade_count')}",
+                    f"- **verdict:** {best.get('verdict')}",
+                    f"- **generation:** {best.get('generation')}",
+                    "",
+                    "## Why",
+                    "",
+                    str(summary.get("why") or ""),
+                ]
+            )
+        lines.extend(["", "## Best by strategy", ""])
+        by_s = summary.get("best_by_strategy") or {}
+        if not by_s:
+            lines.append("_None._")
+        else:
+            lines.append("| strategy | sharpe | dsr | cost_drag% | trades | verdict | params |")
+            lines.append("|---|---:|---:|---:|---:|---|---|")
+            for name, r in sorted(by_s.items()):
+                lines.append(
+                    f"| {name} | {r.get('sharpe')} | {r.get('dsr')} | "
+                    f"{r.get('cost_drag_pct')} | {r.get('trade_count')} | "
+                    f"{r.get('verdict')} | `{r.get('params')}` |"
+                )
+        lines.extend(["", "## Top 10", ""])
+        top = summary.get("top10") or []
+        if not top:
+            lines.append("_None._")
+        else:
+            lines.append("| # | strategy | sharpe | dsr | cost_drag% | trades | verdict |")
+            lines.append("|---:|---|---:|---:|---:|---:|---|")
+            for i, r in enumerate(top, 1):
+                lines.append(
+                    f"| {i} | {r.get('strategy')} | {r.get('sharpe')} | {r.get('dsr')} | "
+                    f"{r.get('cost_drag_pct')} | {r.get('trade_count')} | {r.get('verdict')} |"
+                )
+        md = "\n".join(lines) + "\n"
+        path = self.campaign_dir(campaign_id) / "SUMMARY.md"
+        path.write_text(md, encoding="utf-8")
+        index = self.campaign_dir(campaign_id) / "JOURNAL.md"
+        with index.open("a", encoding="utf-8") as fh:
+            fh.write(md)
+            fh.write("\n\n---\n\n")
+        return path
+
     def read_report(self, campaign_id: str) -> str:
         index = self.campaign_dir(campaign_id) / "JOURNAL.md"
-        if not index.exists():
+        summary = self.campaign_dir(campaign_id) / "SUMMARY.md"
+        parts: list[str] = []
+        if summary.exists():
+            parts.append(summary.read_text(encoding="utf-8"))
+        if index.exists():
+            parts.append(index.read_text(encoding="utf-8"))
+        if not parts:
             return f"No journal for campaign {campaign_id}"
-        return index.read_text(encoding="utf-8")
+        return "\n\n".join(parts)

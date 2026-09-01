@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Header, Query, Request
+from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from fmtrader.api.deps import get_paths
 from fmtrader.api.lttb import lttb
 from fmtrader.api.routers.executions import (
     equity_series,
@@ -16,6 +19,10 @@ from fmtrader.api.routers.executions import (
     load_trades,
 )
 from fmtrader.api.sse import SseEvent, throttled_sse
+from fmtrader.backtest.runner import load_cost_config, run_backtest
+from fmtrader.core.errors import FeatureError
+from fmtrader.strategy import library as _library  # noqa: F401
+from fmtrader.strategy.base import get_strategy
 
 router = APIRouter(tags=["runs"])
 
@@ -25,6 +32,9 @@ class CreateRunBody(BaseModel):
     dataset_id: str
     params: dict[str, Any] = Field(default_factory=dict)
     lane: str = "vectorbt"
+    max_bars: int | None = 5000
+    cost_config: str = "configs/costs/xauusd_cfd.yaml"
+    run_sensitivity: bool = True
 
 
 class CompareBody(BaseModel):
@@ -71,10 +81,70 @@ def list_runs(
 
 @router.post("/runs")
 def create_run(body: CreateRunBody) -> dict[str, Any]:
+    """Launch a manual Lab run — records trial with source=manual."""
+    try:
+        strat = get_strategy(body.strategy)
+    except FeatureError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    schema = getattr(strat, "params_schema", None) or getattr(type(strat), "params_schema", None)
+    if schema is not None:
+        try:
+            params = schema(**body.params).model_dump()
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=400, detail=f"Invalid params: {exc}") from exc
+    else:
+        params = dict(body.params)
+
+    paths = get_paths()
+    cost_path = Path(body.cost_config)
+    if not cost_path.is_file():
+        raise HTTPException(status_code=400, detail=f"Cost config not found: {cost_path}")
+    cost_cfg = load_cost_config(cost_path)
+
+    catalog = Path("data/catalog")
+    snapshots = paths.snapshots if paths.snapshots.exists() else Path("data/snapshots")
+
+    try:
+        man = run_backtest(
+            strategy=body.strategy,
+            params=params,
+            dataset_id=body.dataset_id,
+            lane=body.lane,
+            cost_cfg=cost_cfg,
+            catalog_root=catalog,
+            snapshots_dir=snapshots,
+            executions_root=paths.executions,
+            max_bars=body.max_bars,
+            run_sensitivity=body.run_sensitivity,
+            source="manual",
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    net = dict(man.metrics_net or {})
+    net["source"] = "manual"
+    man.metrics_net = net
+    out_path = paths.executions / f"{man.execution_id}.json"
+    if out_path.exists():
+        data = json.loads(out_path.read_text(encoding="utf-8"))
+        data["metrics_net"] = net
+        out_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
     return {
-        "status": "stub",
-        "message": "Manual run launch not wired; use fmtrader backtest CLI",
-        "request": body.model_dump(),
+        "status": "complete",
+        "id": man.execution_id,
+        "execution_id": man.execution_id,
+        "strategy": man.strategy,
+        "params": man.params,
+        "dataset_id": man.dataset_id,
+        "lane": man.lane,
+        "metrics_net": man.metrics_net,
+        "metrics_gross": man.metrics_gross,
+        "cost_drag_pct": man.cost_drag_pct,
+        "trade_count": man.trade_count,
+        "fragile": man.fragile,
+        "cost_sensitivity": man.cost_sensitivity,
     }
 
 

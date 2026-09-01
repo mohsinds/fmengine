@@ -1,13 +1,13 @@
-"""Temporal ResearchCampaignWorkflow with pause/resume/abort/adjust_budget signals."""
+"""Temporal ResearchCampaignWorkflow with pause/resume/abort/adjust_budget signals.
+
+Sandbox-safe: no logging, HTTP, or activity module imports at workflow load time.
+Activities are referenced by registered name strings.
+"""
 
 from __future__ import annotations
 
 from datetime import timedelta
 from typing import Any
-
-from fmtrader.system.logging import get_logger
-
-log = get_logger(__name__)
 
 try:
     from temporalio import workflow
@@ -18,8 +18,6 @@ except ImportError:  # pragma: no cover
 
 
 if workflow is not None:
-    with workflow.unsafe.imports_passed_through():
-        from fmtrader.orchestration import activities as _activities
 
     @workflow.defn(name="ResearchCampaignWorkflow")
     class ResearchCampaignWorkflow:
@@ -88,14 +86,14 @@ if workflow is not None:
                     self._state["budget_override"] = self._budget_override
 
                 self._state = await workflow.execute_activity(
-                    _activities.run_generation_activity,
+                    "run_generation_activity",
                     self._state,
                     start_to_close_timeout=timedelta(hours=2),
                     heartbeat_timeout=timedelta(minutes=5),
                     retry_policy=retry,
                 )
                 self._state = await workflow.execute_activity(
-                    _activities.checkpoint_activity,
+                    "checkpoint_activity",
                     self._state,
                     start_to_close_timeout=timedelta(minutes=2),
                     retry_policy=retry,
@@ -103,6 +101,12 @@ if workflow is not None:
 
             if self._state.get("status") not in {"aborted", "paused", "failed"}:
                 self._state["status"] = "completed"
+                self._state = await workflow.execute_activity(
+                    "finalize_campaign_activity",
+                    self._state,
+                    start_to_close_timeout=timedelta(minutes=2),
+                    retry_policy=retry,
+                )
             return self._state
 
 else:

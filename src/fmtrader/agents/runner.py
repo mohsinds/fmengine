@@ -7,15 +7,22 @@ import uuid
 from pathlib import Path
 
 from fmtrader.agents.budget import BudgetCaps, BudgetGovernor
-from fmtrader.agents.campaign import CampaignConfig, CampaignState, load_search_space
+from fmtrader.agents.campaign import (
+    CampaignConfig,
+    CampaignState,
+    bind_search_spaces,
+    load_search_spaces,
+)
 from fmtrader.agents.journal import ResearchJournal
 from fmtrader.agents.ledger import CostLedger
 from fmtrader.agents.llm import LLMRouter, StubLLMClient, default_router
 from fmtrader.agents.nodes import (
+    build_leaderboard_summary,
     critique_and_select,
     fast_sweep,
     fidelity_eval,
     hypothesize,
+    score_results,
     shortlist,
     validate_proposals,
     write_journal,
@@ -57,16 +64,40 @@ def new_campaign_id() -> str:
 
 def create_campaign(config: CampaignConfig, *, store: CampaignStore | None = None) -> CampaignState:
     store = store or CampaignStore()
-    space = load_search_space(Path(config.space_path))
+    raw = load_search_spaces(Path(config.space_path))
+    spaces = bind_search_spaces(raw, list(config.strategies))
     state = CampaignState(
         campaign_id=new_campaign_id(),
         config=config,
         status="created",
         generation=0,
-        search_space=space,
+        search_spaces=spaces,
+        search_space=spaces.get(config.strategy) or next(iter(spaces.values()), {}),
     )
     store.save(state)
     return state
+
+
+def _stub_hypothesize_payload(state: CampaignState) -> str:
+    """Stub hypothesize response.
+
+    Empty array forces grid sampling across ``search_spaces`` (better for long soaks).
+    When refining a tiny space, still emit one seed proposal per strategy.
+    """
+    if not state.config.refine_space:
+        return "[]"
+    spaces = state.search_spaces or {}
+    props = []
+    for name in state.config.strategies:
+        space = spaces.get(name) or state.search_space
+        props.append(
+            {
+                "strategy": name,
+                "params": {k: (v[0] if v else None) for k, v in space.items()},
+                "rationale": "stub",
+            }
+        )
+    return json.dumps(props[: state.config.proposals_per_generation] or props)
 
 
 def run_generation(
@@ -86,37 +117,53 @@ def run_generation(
     state.status = "running"
     state.generation += 1
     hypothesis = (
-        f"Generation {state.generation}: explore {state.config.strategy} "
-        f"around space keys {list(state.search_space)}"
+        f"Generation {state.generation}: explore strategies {state.config.strategies} "
+        f"spaces={list(state.search_spaces)}"
     )
     raw = hypothesize(state, router)
     valid = validate_proposals(raw, state)
     if not valid:
-        # Fall back to raw grid sample already returned; try without registry dedupe once
+        # Registry dedupe emptied the batch — resample from grids with a shifted seed
+        from fmtrader.agents.nodes import _sample_multi, ensure_spaces
         from fmtrader.agents.proposals import StrategyProposal
 
-        valid = [
-            StrategyProposal.model_validate(x) for x in raw[: state.config.proposals_per_generation]
-        ]
+        spaces = ensure_spaces(state)
+        resampled = _sample_multi(
+            spaces,
+            strategies=list(state.config.strategies),
+            n=state.config.proposals_per_generation,
+            seed=state.config.seed + state.generation * 97 + 13,
+        )
+        valid = validate_proposals(resampled, state)
+        if not valid:
+            valid = [
+                StrategyProposal.model_validate(x)
+                for x in resampled[: state.config.proposals_per_generation]
+            ]
     results = fast_sweep(valid, state)
-    listed = shortlist(results, state)
+    scored = score_results(results, state)
+    state.leaderboard.extend(scored)
+    listed = shortlist(scored, state)
     fidelity = fidelity_eval(listed, state)
-    critique, decision, survivors, next_space = critique_and_select(
-        state, router, results, fidelity
+    critique, decision, survivors, next_spaces = critique_and_select(
+        state, router, scored, fidelity
     )
     write_journal(
         state,
         hypothesis=hypothesis,
         proposals=[p.model_dump() for p in valid],
-        results=results,
+        results=scored,
         survivors=survivors,
-        next_search_space=next_space,
+        next_search_space=next_spaces,
         critique=critique,
         decision=decision,
         journal=journal,
     )
     state.survivors = survivors
-    state.search_space = next_space
+    state.search_spaces = next_spaces
+    state.search_space = next_spaces.get(state.config.strategy) or next(
+        iter(next_spaces.values()), {}
+    )
     return state
 
 
@@ -138,19 +185,7 @@ def run_campaign_local(
         if state.config.use_stub_llm:
             router = LLMRouter(
                 gov,
-                local=StubLLMClient(
-                    response=json.dumps(
-                        [
-                            {
-                                "strategy": state.config.strategy,
-                                "params": {
-                                    k: (v[0] if v else None) for k, v in state.search_space.items()
-                                },
-                                "rationale": "stub",
-                            }
-                        ]
-                    )
-                ),
+                local=StubLLMClient(response=_stub_hypothesize_payload(state)),
                 frontier=StubLLMClient(response='{"critique":"stub"}'),
             )
         else:
@@ -180,6 +215,23 @@ def run_campaign_local(
             raise
 
     state.status = "completed"
+    state = finalize_campaign(state, journal=journal, store=store)
+    return state
+
+
+def finalize_campaign(
+    state: CampaignState,
+    *,
+    journal: ResearchJournal | None = None,
+    store: CampaignStore | None = None,
+) -> CampaignState:
+    """Write end-of-campaign leaderboard summary (local + Temporal)."""
+    journal = journal or ResearchJournal()
+    store = store or CampaignStore()
+    if state.status == "completed":
+        summary = build_leaderboard_summary(state)
+        path = journal.write_summary(state.campaign_id, summary)
+        state.journal_paths.append(str(path))
     store.save(state)
     return state
 

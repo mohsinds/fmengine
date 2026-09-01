@@ -1,0 +1,5 @@
+name: rsi_mean_reversion
+grid:
+  period: [7, 14, 21]
+  oversold: [20, 25, 30]
+  overbought: [70, 75, 80]

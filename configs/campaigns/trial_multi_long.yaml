@@ -1,0 +1,31 @@
+# Long multi-strategy lab soak — Temporal, dense grids, no space shrink, full bar history.
+# Start:
+#   make worker   # keep running (must load current code)
+#   uv run fmtrader campaign new --config configs/campaigns/trial_multi_long.yaml --temporal
+#
+# ~1.5k+ valid cells × full XAUUSD history per trial → multi-day wall time.
+# Registry-aware sampling prefers untried configs until the grids are exhausted.
+name: trial_multi_long
+dataset_id: xauusd_1m_bid_2021-01-03_2026-08-30
+strategies:
+  - ema_cross
+  - rsi_mean_reversion
+  - macd_cross
+  - bollinger_breakout
+  - supertrend_trend
+space_path: configs/spaces/multi_family_dense.yaml
+max_generations: 2000
+proposals_per_generation: 20
+shortlist_size: 5
+max_sweep_configs: 200
+workers: 6
+max_bars: null
+run_fidelity: false
+use_stub_llm: true
+refine_space: false
+seed: 0
+cost_config: configs/costs/xauusd_cfd.yaml
+budget:
+  per_campaign_usd: 500.0
+  per_day_usd: 100.0
+  per_generation_usd: 25.0

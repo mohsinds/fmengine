@@ -1,0 +1,4 @@
+name: bollinger_breakout
+grid:
+  period: [14, 20, 30]
+  num_std: [1.5, 2.0, 2.5]

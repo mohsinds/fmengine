@@ -1,4 +1,4 @@
-"""EMA crossover strategy."""
+"""MACD crossover strategy — long when MACD line > signal."""
 
 from __future__ import annotations
 
@@ -9,28 +9,30 @@ import numpy as np
 import polars as pl
 from pydantic import BaseModel, Field
 
-from fmtrader.features.indicators.trend import ema
+from fmtrader.features.indicators.momentum import macd
 from fmtrader.strategy.base import register_strategy
 from fmtrader.strategy.library._util import apply_tradable_hold
 
 
-class EmaCrossParams(BaseModel):
+class MacdCrossParams(BaseModel):
     fast: int = Field(default=12, ge=1)
     slow: int = Field(default=26, ge=2)
+    signal: int = Field(default=9, ge=1)
 
 
 @register_strategy
-class EmaCross:
-    name = "ema_cross"
-    params_schema = EmaCrossParams
+class MacdCross:
+    name = "macd_cross"
+    params_schema = MacdCrossParams
 
     def generate(self, bars: pl.DataFrame, params: Mapping[str, Any]) -> pl.Series:
-        p = EmaCrossParams(**params)
+        p = MacdCrossParams(**params)
         if p.fast >= p.slow:
-            raise ValueError("ema_cross requires fast < slow")
-        fast = ema(bars, period=p.fast).to_numpy()
-        slow = ema(bars, period=p.slow).to_numpy()
-        long_sig = (fast > slow) & np.isfinite(fast) & np.isfinite(slow)
+            raise ValueError("macd_cross requires fast < slow")
+        frame = macd(bars, fast=p.fast, slow=p.slow, signal=p.signal)
+        line = frame[f"macd_{p.fast}_{p.slow}"].to_numpy()
+        sig = frame[f"macd_signal_{p.fast}_{p.slow}_{p.signal}"].to_numpy()
+        long_sig = (line > sig) & np.isfinite(line) & np.isfinite(sig)
         pos = np.where(long_sig, 1, 0).astype(np.int8)
         pos = apply_tradable_hold(pos, bars)
         return pl.Series("position", pos)

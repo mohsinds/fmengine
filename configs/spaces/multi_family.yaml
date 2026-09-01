@@ -1,0 +1,20 @@
+# Multi-strategy family search spaces for campaign sweeps.
+name: multi_family
+strategies:
+  ema_cross:
+    fast: [5, 8, 12, 20]
+    slow: [20, 26, 50, 100]
+  rsi_mean_reversion:
+    period: [7, 14, 21]
+    oversold: [20, 25, 30]
+    overbought: [70, 75, 80]
+  macd_cross:
+    fast: [8, 12]
+    slow: [21, 26]
+    signal: [5, 9]
+  bollinger_breakout:
+    period: [14, 20, 30]
+    num_std: [1.5, 2.0, 2.5]
+  supertrend_trend:
+    period: [7, 10, 14]
+    multiplier: [2.0, 3.0, 4.0]

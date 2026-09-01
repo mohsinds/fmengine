@@ -288,3 +288,18 @@ table.dense td {
   min-height: 72px;
   resize: vertical;
 }
+
+.stack { display: flex; flex-direction: column; gap: 0.85rem; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; }
+.panel-h { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.panel-b { padding: 0.75rem; }
+.lab-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+.lab-params { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.65rem; margin-bottom: 1rem; }
+.lab-grid label, .lab-params label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.lab-grid select, .lab-grid input, .lab-params input {
+  background: #0a0c10; border: 1px solid var(--border); border-radius: 3px; color: var(--text);
+  padding: 0.4rem 0.5rem; font-size: 12px; font-family: inherit;
+}
+.warn { color: var(--amber); font-size: 12px; margin: 0.5rem 0; }
+.pill.amber { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 40%, var(--border)); }
+.delta { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }

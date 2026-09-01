@@ -216,6 +216,7 @@ def run_next_bar_engine(
         trade_pnls_net=t_net,
         trade_pnls_gross=t_gross,
         position=position.astype(np.float64),
+        initial_cash=initial_cash,
     )
     metrics_gross = compute_metrics(
         equity_net=equity_gross,
@@ -223,6 +224,7 @@ def run_next_bar_engine(
         trade_pnls_net=t_gross,
         trade_pnls_gross=t_gross,
         position=position.astype(np.float64),
+        initial_cash=initial_cash,
     )
     return BacktestResult(
         lane=lane,

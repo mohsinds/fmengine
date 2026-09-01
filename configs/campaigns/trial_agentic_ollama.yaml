@@ -1,0 +1,30 @@
+# Agentic multi-strategy campaign — Ollama for hypothesize; Claude/OpenAI for critical gating.
+# Caps: OpenAI $3 + Anthropic $5 (also enforced as openai_usd / anthropic_usd).
+# No weight fine-tuning — local models are inference-only for research decisions.
+name: trial_agentic_ollama
+dataset_id: xauusd_1m_bid_2021-01-03_2026-08-30
+strategies:
+  - ema_cross
+  - rsi_mean_reversion
+  - macd_cross
+  - bollinger_breakout
+  - supertrend_trend
+space_path: configs/spaces/multi_family_dense.yaml
+max_generations: 40
+proposals_per_generation: 8
+shortlist_size: 3
+max_sweep_configs: 50
+workers: 6
+max_bars: 50000
+run_fidelity: false
+use_stub_llm: false
+refine_space: true
+seed: 1
+initial_cash: 100000
+cost_config: configs/costs/xauusd_cfd.yaml
+budget:
+  per_campaign_usd: 8.0
+  per_day_usd: 8.0
+  per_generation_usd: 1.0
+  openai_usd: 3.0
+  anthropic_usd: 5.0

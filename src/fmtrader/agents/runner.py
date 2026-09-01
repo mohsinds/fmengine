@@ -189,7 +189,13 @@ def run_campaign_local(
                 frontier=StubLLMClient(response='{"critique":"stub"}'),
             )
         else:
-            router = default_router(caps=caps, ledger=ledger, stub=False)
+            router = default_router(
+                caps=caps,
+                ledger=ledger,
+                stub=False,
+                campaign_id=state.campaign_id,
+                sweep_active=True,
+            )
 
     limit = max_generations if max_generations is not None else state.config.max_generations
     state.status = "running"

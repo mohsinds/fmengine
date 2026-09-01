@@ -125,7 +125,6 @@ if workflow is not None:
                     "run_generation_activity",
                     payload,
                     start_to_close_timeout=act_to,
-                    heartbeat_timeout=timedelta(minutes=5),
                     retry_policy=retry,
                 )
                 self._snapshot = await workflow.execute_activity(

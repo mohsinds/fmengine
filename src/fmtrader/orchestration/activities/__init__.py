@@ -12,7 +12,7 @@ from fmtrader.agents.budget import BudgetCaps, BudgetGovernor
 from fmtrader.agents.campaign import CampaignState
 from fmtrader.agents.journal import ResearchJournal
 from fmtrader.agents.ledger import CostLedger
-from fmtrader.agents.llm import LLMRouter, StubLLMClient
+from fmtrader.agents.llm import LLMRouter, StubLLMClient, default_router
 from fmtrader.agents.runner import (
     CampaignStore,
     _stub_hypothesize_payload,
@@ -23,12 +23,21 @@ from fmtrader.agents.runner import (
 
 def _router_for(state: CampaignState) -> LLMRouter:
     caps = state.budget_override or state.config.budget
-    gov = BudgetGovernor(caps, ledger=CostLedger())
-    local_resp = _stub_hypothesize_payload(state) if state.config.use_stub_llm else "[]"
-    return LLMRouter(
-        gov,
-        local=StubLLMClient(response=local_resp),
-        frontier=StubLLMClient(response='{"critique":"stub"}'),
+    ledger = CostLedger()
+    if state.config.use_stub_llm:
+        gov = BudgetGovernor(caps, ledger=ledger)
+        return LLMRouter(
+            gov,
+            local=StubLLMClient(response=_stub_hypothesize_payload(state)),
+            frontier=StubLLMClient(response='{"critique":"stub"}'),
+        )
+    # Ollama for hypothesize; Claude/OpenAI for critique/select/report under provider caps
+    return default_router(
+        caps=caps,
+        ledger=ledger,
+        stub=False,
+        campaign_id=state.campaign_id,
+        sweep_active=True,
     )
 
 
@@ -39,6 +48,8 @@ def _apply_payload_overrides(state: CampaignState, payload: dict[str, Any]) -> N
             per_campaign_usd=float(bo.get("per_campaign_usd", 0) or 0),
             per_day_usd=float(bo.get("per_day_usd", 0) or 0),
             per_generation_usd=float(bo.get("per_generation_usd", 0) or 0),
+            openai_usd=float(bo.get("openai_usd", 0) or 0),
+            anthropic_usd=float(bo.get("anthropic_usd", 0) or 0),
         )
     if "pause_requested" in payload:
         state.pause_requested = bool(payload["pause_requested"])
@@ -58,6 +69,8 @@ def _slim(state: CampaignState) -> dict[str, Any]:
         "survivor_count": len(state.survivors),
         "leaderboard_count": len(state.leaderboard),
         "last_error": state.last_error,
+        "initial_cash": state.config.initial_cash,
+        "use_stub_llm": state.config.use_stub_llm,
     }
 
 

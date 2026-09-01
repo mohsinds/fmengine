@@ -118,6 +118,22 @@ class CostLedger:
             ).fetchone()
         return float(row["s"])
 
+    def spent_provider(self, provider: str, *, campaign_id: str | None = None) -> float:
+        with self._connect() as conn:
+            if campaign_id:
+                row = conn.execute(
+                    "SELECT COALESCE(SUM(cost_usd), 0) AS s FROM llm_calls "
+                    "WHERE provider = ? AND campaign_id = ? AND refused = 0",
+                    (provider, campaign_id),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT COALESCE(SUM(cost_usd), 0) AS s FROM llm_calls "
+                    "WHERE provider = ? AND refused = 0",
+                    (provider,),
+                ).fetchone()
+        return float(row["s"])
+
     def count(self, *, campaign_id: str | None = None) -> int:
         with self._connect() as conn:
             if campaign_id:

@@ -51,10 +51,23 @@ class MemorySnapshot:
         )
 
 
+def _iter_processes(attrs: list[str]):
+    """Yield process info; tolerate sandbox / macOS sysctl PermissionError."""
+    try:
+        iterator = psutil.process_iter(attrs)
+    except (psutil.Error, PermissionError, OSError):
+        return
+    try:
+        for proc in iterator:
+            yield proc
+    except (psutil.Error, PermissionError, OSError):
+        return
+
+
 def _rss_gb_for_name(substr: str) -> float:
     total = 0.0
     needle = substr.lower()
-    for proc in psutil.process_iter(["name", "cmdline", "memory_info"]):
+    for proc in _iter_processes(["name", "cmdline", "memory_info"]):
         try:
             name = (proc.info.get("name") or "").lower()
             cmdline = " ".join(proc.info.get("cmdline") or []).lower()
@@ -62,22 +75,18 @@ def _rss_gb_for_name(substr: str) -> float:
                 mem = proc.info.get("memory_info")
                 if mem is not None:
                     total += float(mem.rss) / (1024**3)
-        except (psutil.Error, TypeError, ValueError):
+        except (psutil.Error, TypeError, ValueError, PermissionError, OSError):
             continue
     return total
 
 
 def _docker_rss_gb() -> float:
     """Best-effort Docker Desktop + container-related RSS on the host."""
-    total = 0.0
-    for needle in ("docker", "com.docker", "vpnkit", "qemu-system", "dockerd"):
-        total += _rss_gb_for_name(needle)
-    # Avoid double-counting overlapping matches by capping at observed docker processes once
-    # via unique PIDs — recompute with a set.
+    # Unique PIDs — avoid double-counting overlapping name/cmdline matches.
     seen: set[int] = set()
     total = 0.0
     needles = ("docker", "com.docker", "vpnkit", "qemu-system", "dockerd", "containerd")
-    for proc in psutil.process_iter(["pid", "name", "cmdline", "memory_info"]):
+    for proc in _iter_processes(["pid", "name", "cmdline", "memory_info"]):
         try:
             pid = int(proc.info["pid"])
             if pid in seen:
@@ -89,7 +98,7 @@ def _docker_rss_gb() -> float:
                 mem = proc.info.get("memory_info")
                 if mem is not None:
                     total += float(mem.rss) / (1024**3)
-        except (psutil.Error, TypeError, ValueError, KeyError):
+        except (psutil.Error, TypeError, ValueError, KeyError, PermissionError, OSError):
             continue
     return total
 
@@ -101,7 +110,7 @@ def _ollama_rss_gb() -> float:
 def _python_workers_rss_gb() -> float:
     """Approximate Python worker pool usage (excludes Cursor / IDE helpers where possible)."""
     total = 0.0
-    for proc in psutil.process_iter(["name", "cmdline", "memory_info"]):
+    for proc in _iter_processes(["name", "cmdline", "memory_info"]):
         try:
             name = (proc.info.get("name") or "").lower()
             cmdline = " ".join(proc.info.get("cmdline") or []).lower()
@@ -113,7 +122,7 @@ def _python_workers_rss_gb() -> float:
                 mem = proc.info.get("memory_info")
                 if mem is not None:
                     total += float(mem.rss) / (1024**3)
-        except (psutil.Error, TypeError, ValueError):
+        except (psutil.Error, TypeError, ValueError, PermissionError, OSError):
             continue
     return total
 
@@ -125,13 +134,20 @@ def collect_memory_snapshot(settings: Settings | None = None) -> MemorySnapshot:
     total_gb = vm.total / (1024**3)
     available_gb = vm.available / (1024**3)
     used_gb = (vm.total - vm.available) / (1024**3)
+    # Process attribution can fail under sandboxed API processes — degrade to 0.
+    try:
+        docker_gb = _docker_rss_gb()
+        ollama_gb = _ollama_rss_gb()
+        workers_gb = _python_workers_rss_gb()
+    except (psutil.Error, PermissionError, OSError):
+        docker_gb = ollama_gb = workers_gb = 0.0
     return MemorySnapshot(
         total_gb=total_gb,
         available_gb=available_gb,
         used_gb=used_gb,
-        docker_gb=_docker_rss_gb(),
-        ollama_gb=_ollama_rss_gb(),
-        python_workers_gb=_python_workers_rss_gb(),
+        docker_gb=docker_gb,
+        ollama_gb=ollama_gb,
+        python_workers_gb=workers_gb,
         budget_docker_gb=cfg.memory_budget_docker_gb,
         budget_ollama_gb=cfg.memory_budget_ollama_gb,
         budget_workers_gb=cfg.memory_budget_workers_gb,

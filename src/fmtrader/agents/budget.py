@@ -20,6 +20,11 @@ class BudgetCaps:
     per_campaign_usd: float = 0.0
     per_day_usd: float = 0.0
     per_generation_usd: float = 0.0
+    openai_usd: float = 0.0
+    """Soft cap for OpenAI frontier spend (0 = no provider-specific cap)."""
+
+    anthropic_usd: float = 0.0
+    """Soft cap for Anthropic frontier spend (0 = no provider-specific cap)."""
 
 
 @dataclass(frozen=True)
@@ -108,6 +113,22 @@ class BudgetGovernor:
                 reasons.append(
                     f"generation cap ${self.caps.per_generation_usd:.4f} "
                     f"(spent ${spent_g:.4f} + est ${cost:.4f})"
+                )
+
+        provider = estimate.provider.lower()
+        if provider == "openai" and self.caps.openai_usd > 0:
+            spent_p = self.ledger.spent_provider("openai", campaign_id=campaign_id)
+            if spent_p + cost > self.caps.openai_usd:
+                reasons.append(
+                    f"openai cap ${self.caps.openai_usd:.4f} "
+                    f"(spent ${spent_p:.4f} + est ${cost:.4f})"
+                )
+        if provider == "anthropic" and self.caps.anthropic_usd > 0:
+            spent_p = self.ledger.spent_provider("anthropic", campaign_id=campaign_id)
+            if spent_p + cost > self.caps.anthropic_usd:
+                reasons.append(
+                    f"anthropic cap ${self.caps.anthropic_usd:.4f} "
+                    f"(spent ${spent_p:.4f} + est ${cost:.4f})"
                 )
 
         if not reasons:

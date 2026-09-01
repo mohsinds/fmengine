@@ -109,6 +109,20 @@ uv run fmtrader campaign continue <campaign_id>
 uv run fmtrader campaign status <campaign_id>
 ```
 
+### Agentic campaign (Ollama + frontier caps)
+
+```bash
+# Keys in gitignored `.env` only — never commit. Rotate if pasted in chat.
+# OPENAI_API_KEY / ANTHROPIC_API_KEY + LLM_BUDGET_* = 8 (OpenAI $3 + Claude $5 soft caps)
+
+make worker
+uv run fmtrader campaign new --config configs/campaigns/trial_agentic_ollama.yaml --temporal
+```
+
+- **Local (hypothesize):** Ollama `qwen2.5-coder:7b` (14B only if memory allows; skipped during sweeps)
+- **Critical (critique/select/report):** Claude first (\$5), OpenAI `gpt-4o-mini` (\$3) — not weight fine-tuning
+- **Capital:** `initial_cash: 100000` reported in SUMMARY with trade P&L mean/median/mode/variance
+
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 cd /path/to/fmengine

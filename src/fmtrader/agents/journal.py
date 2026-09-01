@@ -139,9 +139,16 @@ class ResearchJournal:
                 [
                     f"- **strategy:** `{best.get('strategy')}`",
                     f"- **params:** `{best.get('params')}`",
+                    f"- **capital (initial_cash):** {best.get('initial_cash', summary.get('initial_cash'))}",
                     f"- **Sharpe (net):** {best.get('sharpe')}",
                     f"- **DSR:** {best.get('dsr')}",
                     f"- **PBO:** {best.get('pbo')} _(placeholder until CSCV)_",
+                    f"- **RoR (net):** {best.get('total_return_net')}",
+                    f"- **net P&L:** {best.get('net_pnl')}",
+                    f"- **trade P&L mean / median / mode / variance:** "
+                    f"{best.get('pnl_mean')} / {best.get('pnl_median')} / "
+                    f"{best.get('pnl_mode')} / {best.get('pnl_variance')}",
+                    f"- **hit_rate:** {best.get('hit_rate')}",
                     f"- **cost drag %:** {best.get('cost_drag_pct')}",
                     f"- **trades:** {best.get('trade_count')}",
                     f"- **verdict:** {best.get('verdict')}",

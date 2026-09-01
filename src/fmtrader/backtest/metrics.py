@@ -33,9 +33,33 @@ class Metrics:
     ulcer_index: float
     total_return_net: float
     total_return_gross: float
+    pnl_mean: float = 0.0
+    pnl_median: float = 0.0
+    pnl_mode: float = 0.0
+    pnl_variance: float = 0.0
+    initial_cash: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def trade_pnl_distribution(trade_pnls: np.ndarray) -> tuple[float, float, float, float]:
+    """Return (mean, median, mode, variance) of per-trade net P&L.
+
+    Mode uses values rounded to the nearest cent (most frequent bin).
+    """
+    t = np.asarray(trade_pnls, dtype=np.float64)
+    t = t[np.isfinite(t)]
+    if t.size == 0:
+        return 0.0, 0.0, 0.0, 0.0
+    mean = float(np.mean(t))
+    median = float(np.median(t))
+    variance = float(np.var(t, ddof=1)) if t.size > 1 else 0.0
+    cents = np.round(t, 2)
+    # mode via bincount on unique rounded values
+    vals, counts = np.unique(cents, return_counts=True)
+    mode = float(vals[int(np.argmax(counts))])
+    return mean, median, mode, variance
 
 
 def _safe_div(a: float, b: float, default: float = 0.0) -> float:
@@ -129,6 +153,7 @@ def compute_metrics(
     trade_pnls_gross: np.ndarray,
     position: np.ndarray,
     bars_per_year: float = 365.25 * 24 * 60,
+    initial_cash: float = 0.0,
 ) -> Metrics:
     """Build the mandatory metric pack from equity curves and trade P&Ls."""
     eq_n = np.asarray(equity_net, dtype=np.float64)
@@ -150,6 +175,7 @@ def compute_metrics(
     avg_win = float(wins.mean()) if wins.size else 0.0
     avg_loss = float(losses.mean()) if losses.size else 0.0
     expectancy = float(t_net.mean()) if t_net.size else 0.0
+    pnl_mean, pnl_median, pnl_mode, pnl_variance = trade_pnl_distribution(t_net)
 
     pos = np.asarray(position, dtype=np.float64)
     exposure = float(np.mean(np.abs(pos) > 0)) if pos.size else 0.0
@@ -165,6 +191,7 @@ def compute_metrics(
     so = sortino_ratio(rets_n, periods_per_year=bars_per_year)
     cg = cagr(eq_n, bars_per_year=bars_per_year)
     calmar = _safe_div(cg, mdd) if mdd > 0 else 0.0
+    cash0 = float(initial_cash) if initial_cash else (float(eq_n[0]) if eq_n.size else 0.0)
 
     return Metrics(
         sharpe=sh,
@@ -188,4 +215,9 @@ def compute_metrics(
         ulcer_index=ulcer_index(eq_n),
         total_return_net=_safe_div(eq_n[-1] - eq_n[0], eq_n[0]) if eq_n.size and eq_n[0] else 0.0,
         total_return_gross=_safe_div(eq_g[-1] - eq_g[0], eq_g[0]) if eq_g.size and eq_g[0] else 0.0,
+        pnl_mean=pnl_mean,
+        pnl_median=pnl_median,
+        pnl_mode=pnl_mode,
+        pnl_variance=pnl_variance,
+        initial_cash=cash0,
     )

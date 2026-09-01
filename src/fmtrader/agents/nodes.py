@@ -170,6 +170,7 @@ def fast_sweep(
                 run_sensitivity=False,
                 max_bars=state.config.max_bars,
                 source="agent",
+                initial_cash=float(state.config.initial_cash),
             )
             metrics = man.metrics_net
             results.append(
@@ -183,6 +184,13 @@ def fast_sweep(
                     "cost_drag_pct": man.cost_drag_pct,
                     "lane": "vectorbt",
                     "generation": state.generation,
+                    "initial_cash": metrics.get("initial_cash", state.config.initial_cash),
+                    "pnl_mean": metrics.get("pnl_mean"),
+                    "pnl_median": metrics.get("pnl_median"),
+                    "pnl_mode": metrics.get("pnl_mode"),
+                    "pnl_variance": metrics.get("pnl_variance"),
+                    "hit_rate": metrics.get("hit_rate"),
+                    "net_pnl": metrics.get("net_pnl"),
                 }
             )
         except Exception as exc:
@@ -397,12 +405,16 @@ def build_leaderboard_summary(state: CampaignState) -> dict[str, Any]:
         why = (
             f"Highest net Sharpe among {len(rows)} scored trials "
             f"(DSR={best.get('dsr')}, verdict={best.get('verdict')}, "
-            f"cost_drag={best.get('cost_drag_pct')}, trades={best.get('trade_count')}). "
+            f"cost_drag={best.get('cost_drag_pct')}, trades={best.get('trade_count')}, "
+            f"capital={best.get('initial_cash', state.config.initial_cash)}, "
+            f"pnl_mean={best.get('pnl_mean')}, pnl_median={best.get('pnl_median')}, "
+            f"pnl_mode={best.get('pnl_mode')}, pnl_var={best.get('pnl_variance')}). "
             "PBO is a conservative placeholder (0.4) until CSCV runs on fidelity lane."
         )
     return {
         "n_trials": len(state.leaderboard),
         "n_scored": len(rows),
+        "initial_cash": state.config.initial_cash,
         "best_overall": best,
         "best_by_strategy": by_strategy,
         "why": why,

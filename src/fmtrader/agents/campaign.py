@@ -37,6 +37,9 @@ class CampaignConfig(BaseModel):
     refine_space: bool = True
     """When False, keep full search grids across generations (long exhaustive soaks)."""
 
+    initial_cash: float = 100_000.0
+    """Paper capital used for backtest sizing / P&L reporting."""
+
     @model_validator(mode="after")
     def _normalize_strategies(self) -> CampaignConfig:
         if not self.strategies:
@@ -57,6 +60,8 @@ class CampaignConfig(BaseModel):
                 per_campaign_usd=float(budget.get("per_campaign_usd", 0) or 0),
                 per_day_usd=float(budget.get("per_day_usd", 0) or 0),
                 per_generation_usd=float(budget.get("per_generation_usd", 0) or 0),
+                openai_usd=float(budget.get("openai_usd", 0) or 0),
+                anthropic_usd=float(budget.get("anthropic_usd", 0) or 0),
             )
         return cls.model_validate(data)
 
@@ -112,6 +117,8 @@ class CampaignState:
                     "per_campaign_usd": self.budget_override.per_campaign_usd,
                     "per_day_usd": self.budget_override.per_day_usd,
                     "per_generation_usd": self.budget_override.per_generation_usd,
+                    "openai_usd": self.budget_override.openai_usd,
+                    "anthropic_usd": self.budget_override.anthropic_usd,
                 }
             ),
         }

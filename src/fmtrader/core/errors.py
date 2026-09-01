@@ -55,3 +55,7 @@ class BudgetError(AgentError):
 
 class RiskError(FmtraderError):
     """Raised for risk sizing, calibration, or limits failures."""
+
+
+class ExecutionError(FmtraderError):
+    """Raised for broker, order, reconciliation, or paper/live routing failures."""

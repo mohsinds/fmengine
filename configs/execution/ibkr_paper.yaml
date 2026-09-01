@@ -1,0 +1,11 @@
+# IBKR paper / live gateway (Phase 10)
+# Leave host blank to use in-process paper simulation (default for CI).
+# TWS paper port is typically 7497; IB Gateway paper 4002.
+
+mode: paper  # paper | live
+account_id: DU000000
+gateway_host: ""  # or set IBKR_GATEWAY_HOST
+gateway_port: 7497
+client_id: 1
+default_symbol: GCZ25
+cancel_bound_ms: 500

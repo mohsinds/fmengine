@@ -29,6 +29,7 @@ dependencies = [
 data = [
     "questdb>=2.0",
     "tenacity>=9.0",
+    "databento>=0.40",
 ]
 backtest = [
     "vectorbt>=0.26",

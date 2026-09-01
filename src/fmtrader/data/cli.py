@@ -77,6 +77,69 @@ def data_quality(
     )
 
 
+@data_app.command("continuous")
+def data_continuous(
+    contracts_dir: Path = typer.Option(
+        ...,
+        "--contracts-dir",
+        exists=True,
+        file_okay=False,
+        help="Directory of per-contract CSV/Parquet files (symbol in filename stem)",
+    ),
+    continuous_symbol: str = typer.Option("GC_c1", "--continuous-symbol"),
+    timeframe: str = typer.Option("1d", "--timeframe"),
+    adjustment: str = typer.Option("back_adjusted", "--adjustment"),
+    roll_rule: str = typer.Option("volume_crossover", "--roll-rule"),
+    out_dir: Path = typer.Option(ROOT / "data" / "continuous", "--out-dir"),
+    confirm_days: int = typer.Option(1, "--confirm-days"),
+) -> None:
+    """Build a continuous futures series from raw per-contract files; retain raws."""
+    configure_logging()
+    from fmtrader.core.enums import InstrumentClass
+    from fmtrader.data.adapters.databento import DatabentoAdapter
+    from fmtrader.data.contracts import (
+        AdjustmentMethod,
+        FuturesContinuousSeriesBuilder,
+        RollRule,
+        write_raw_and_continuous,
+    )
+
+    adapter = DatabentoAdapter()
+    import polars as pl
+
+    raw: dict[str, pl.DataFrame] = {}
+    for path in sorted(contracts_dir.iterdir()):
+        if path.suffix.lower() not in {".csv", ".parquet", ".pq"}:
+            continue
+        sym = path.stem.split("_")[0].upper()
+        result = adapter.read(
+            path,
+            symbol=sym,
+            timeframe=timeframe,
+            instrument_class=InstrumentClass.FUTURES_RAW,
+        )
+        raw[sym] = result.frame
+    if len(raw) < 1:
+        raise typer.BadParameter(f"No contract files found in {contracts_dir}")
+
+    built = FuturesContinuousSeriesBuilder().build(
+        raw,
+        adjustment=AdjustmentMethod(adjustment),
+        roll_rule=RollRule(roll_rule),
+        roll_params={"confirm_days": confirm_days},
+    )
+    paths = write_raw_and_continuous(
+        built,
+        root=out_dir / continuous_symbol,
+        continuous_symbol=continuous_symbol,
+        timeframe=timeframe,
+    )
+    console.print(
+        f"[green]Continuous series written[/green] {paths[continuous_symbol]} "
+        f"rolls={len(built.rolls)} raw_contracts={len(built.raw_by_contract)}"
+    )
+
+
 @data_app.command("catalog-count")
 def catalog_count(
     symbol: str = typer.Option(..., "--symbol"),

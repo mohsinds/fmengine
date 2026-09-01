@@ -831,6 +831,53 @@ wheels = [
 ]
 
 [[package]]
+name = "databento"
+version = "0.85.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "databento-dbn" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "pip-system-certs", marker = "sys_platform == 'win32'" },
+    { name = "pyarrow" },
+    { name = "requests" },
+    { name = "zstandard" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/04/64/da3d362beae111059e19edfb00fc541b0026ec14436671dd066bd9ee0d6d/databento-0.85.0.tar.gz", hash = "sha256:a265175d0ddbc6db7e884523a6feb1b12ac860b8b1099e111160b1f75592106d", size = 75300, upload-time = "2026-08-25T22:18:00.574Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2f/a8/e9b4eb55e94f63baeb229276169c8a65d4653c4d2c6b96dfa306cd660ab3/databento-0.85.0-py3-none-any.whl", hash = "sha256:8d99852c73aa28182a26034bc986142b2d678ea27747972dcdfbf5509d154e4b", size = 93294, upload-time = "2026-08-25T22:18:01.832Z" },
+]
+
+[[package]]
+name = "databento-dbn"
+version = "0.68.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5b/ce/f007a13ee5d356b9cb64970d32b047e96a512a64a7265a4c01a792b571d2/databento_dbn-0.68.0-cp312-cp312-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:86bbe48d85f69d05a2cc13da4486df9a2af27a4cb42098f151ecc4d5af661769", size = 2662360, upload-time = "2026-08-25T19:24:14.611Z" },
+    { url = "https://files.pythonhosted.org/packages/c8/ed/83366acde1ddb69c41886d6f00f13733a8818b20382e811f8d7765c49334/databento_dbn-0.68.0-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:5b9ea2481c7d702b9b0beffbb4be2747788cc3045862fd90df6d73c611d7397d", size = 1394190, upload-time = "2026-08-25T19:24:15.841Z" },
+    { url = "https://files.pythonhosted.org/packages/75/17/12898331f4ae207a88da9e5ab3760db13665d9baa54d604b6a0790a22741/databento_dbn-0.68.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:15cc08748b6dd1bb5c3e2aa9888592fcb2619c26f8b9d54a5e8a2761a52fca80", size = 1513788, upload-time = "2026-08-25T19:24:17.457Z" },
+    { url = "https://files.pythonhosted.org/packages/89/a6/cf7b988ac4109151a97fc8c7e46f4c63eae60f63c9efd54be2d6cbb9d656/databento_dbn-0.68.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:8ea021a381e1cea0a07e0895172ddfcfc7a1b146b1094c851b9dde6341bca7b6", size = 1513530, upload-time = "2026-08-25T19:24:18.616Z" },
+    { url = "https://files.pythonhosted.org/packages/f0/5b/c59244d9c3e30780042155962922538fef1194cdb4566a99fa99743c4206/databento_dbn-0.68.0-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:b84cfec58cb53d7bb54a947f5b7692043b44703fdceb1b6b7c6fd4b1aef97831", size = 1726454, upload-time = "2026-08-25T19:24:19.8Z" },
+    { url = "https://files.pythonhosted.org/packages/66/f4/702d670d31a5a62f754ae1acf310ed40da412c59bf966a9e37803ac9eef4/databento_dbn-0.68.0-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:4bc485e25dffeb1cff4460ac0b7f5145402ff17eaed07e8710d524c337803db9", size = 1787595, upload-time = "2026-08-25T19:24:21.1Z" },
+    { url = "https://files.pythonhosted.org/packages/64/af/0e70e6a575031ab490f4cb74379f9054c8053fb9c586e6c121663b0b9f09/databento_dbn-0.68.0-cp312-cp312-win_amd64.whl", hash = "sha256:459779ecfc5be2adda2812cd1658a87c9cca1b9846defd2dc20b1491e8e6323e", size = 1113828, upload-time = "2026-08-25T19:24:22.434Z" },
+    { url = "https://files.pythonhosted.org/packages/64/07/035a9f38b5d34e16776b4687776c85db1d4943bb0c881d6f2f1ed2253073/databento_dbn-0.68.0-cp313-cp313-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:4256a9d670ba5533d8c7696a567c68b39e9bdb46ad3942a345018d388530c8c6", size = 2661687, upload-time = "2026-08-25T19:24:23.642Z" },
+    { url = "https://files.pythonhosted.org/packages/41/98/28fa59aa2f91c3fd24ca512481182cd28f46c7db3b368b693e81f6182335/databento_dbn-0.68.0-cp313-cp313-macosx_10_12_x86_64.whl", hash = "sha256:8c11564b8d87f5d09ac9099b0b5b7ce16116dc2dd3a7667667732169e6e74bd7", size = 1393354, upload-time = "2026-08-25T19:24:24.917Z" },
+    { url = "https://files.pythonhosted.org/packages/90/93/ff8b3a6b3d7e86672700b54e4436a314240ff894eea2aca2a203dd086a84/databento_dbn-0.68.0-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:f346e3eed58a612cd14600661c9484c7f6f782acafc441dc45479579b4cce082", size = 1512864, upload-time = "2026-08-25T19:24:26.255Z" },
+    { url = "https://files.pythonhosted.org/packages/86/08/d16314d2e65f9d8000f380db3f1233f75018af116ad4d218e041fb0b5d17/databento_dbn-0.68.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:80bbbb3966dbaa71130760d0700432fa6564476074c8890aaa3dead0519a9f15", size = 1516206, upload-time = "2026-08-25T19:24:27.571Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/fc/02741c095e5671dd06d500f3400ded80791c53c18c255fcf6b24e9f4122d/databento_dbn-0.68.0-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:d045fd89dfa7edc68c4bce926cff4f46038ff2cf27aa10633cccac0ae15154f6", size = 1725024, upload-time = "2026-08-25T19:24:29.175Z" },
+    { url = "https://files.pythonhosted.org/packages/a4/d3/2b904e0bb32d5bdf646c212e8a48c67e24ab2b17024928dded9fffe1da3a/databento_dbn-0.68.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:bc7f483bca93a8e4f07d4fa7834c4ff19f1ff221463be891d9310288fbfa8715", size = 1791454, upload-time = "2026-08-25T19:24:30.408Z" },
+    { url = "https://files.pythonhosted.org/packages/16/b4/31f67fa9b8a8eb6337693e884ca20b4f651b2a2c82e88bdbe0afae42f283/databento_dbn-0.68.0-cp313-cp313-win_amd64.whl", hash = "sha256:7e0f980a936691797097707e923474fb6a1e968cc4a87e20c97ceb4f16dc76b7", size = 1113227, upload-time = "2026-08-25T19:24:31.559Z" },
+    { url = "https://files.pythonhosted.org/packages/05/d2/e5e38b255bf2259689d61f97747f104a06b2992cb656ecdb53caa991ff88/databento_dbn-0.68.0-cp314-cp314-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:d01d90ad9a7fee74a7a99d5fda1c5c7d04126ed75585ba3189f494352d006de4", size = 2663165, upload-time = "2026-08-25T19:24:33.313Z" },
+    { url = "https://files.pythonhosted.org/packages/e8/49/f89b22bb9c3cb9115db4335ec248d2b61285a41789c8ba546915730245e4/databento_dbn-0.68.0-cp314-cp314-macosx_10_12_x86_64.whl", hash = "sha256:26d00d1870ea7e1488e9575a2646923dce6535340168747a36b7c08cefd199fa", size = 1393715, upload-time = "2026-08-25T19:24:34.493Z" },
+    { url = "https://files.pythonhosted.org/packages/31/0b/4dd1f5f54aaf6de4d20f343f3a21d8f06caaa7253424c8bf1ecf33a4e357/databento_dbn-0.68.0-cp314-cp314-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:122116425becb7698c896d191e616490c5789da7cd3d7f14590f88d8ec87f3ec", size = 1512745, upload-time = "2026-08-25T19:24:35.717Z" },
+    { url = "https://files.pythonhosted.org/packages/71/14/0bc23dc43b9b1cf8744d4c45f4a1020501ace1c2238fb205e33650c23dcf/databento_dbn-0.68.0-cp314-cp314-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b1cf66fd6596271d514d9f201d4bd7124b881a7e2a55f02f1fd17ad791d391af", size = 1515990, upload-time = "2026-08-25T19:24:37.159Z" },
+    { url = "https://files.pythonhosted.org/packages/96/d6/70b9bb330b93b1e23e7989b8c85f4e90874b069b138fe3f6ee62bc5dc952/databento_dbn-0.68.0-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:88f7b1e417533f8ee62be11bca8b075e0d9aadb59310e18523789a2303ead106", size = 1724709, upload-time = "2026-08-25T19:24:38.444Z" },
+    { url = "https://files.pythonhosted.org/packages/6e/82/688b7cd5968749ce2280900848b85406c74dd2fa333473a3d27df306b7f2/databento_dbn-0.68.0-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:e92ada9b38ccd405c14fda4e4af2c528391b67b7e63f468554bbb79dfbea338b", size = 1791156, upload-time = "2026-08-25T19:24:39.742Z" },
+    { url = "https://files.pythonhosted.org/packages/4b/a6/6fb746f3a50754dbe2561b9a266edfb7f85532ed292b4c18aec9f6be1a87/databento_dbn-0.68.0-cp314-cp314-win_amd64.whl", hash = "sha256:ca3ed50e238bfb6fa9a94e4665bc7e8a0992f4da0730095a3ef7cfa783b6fb68", size = 1114290, upload-time = "2026-08-25T19:24:41.14Z" },
+]
+
+[[package]]
 name = "databricks-sdk"
 version = "0.133.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1077,6 +1124,7 @@ backtest = [
     { name = "vectorbt" },
 ]
 data = [
+    { name = "databento" },
     { name = "questdb" },
     { name = "tenacity" },
 ]
@@ -1125,6 +1173,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", marker = "extra == 'tracking'", specifier = ">=1.14" },
+    { name = "databento", marker = "extra == 'data'", specifier = ">=0.40" },
     { name = "duckdb", specifier = ">=1.1" },
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
@@ -3472,6 +3521,27 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/18/f0/a5595c1e8c3ae44b9828cb2f0fa8155e5095ef04d6327b8f61cf44a3df85/pillow-12.3.0-cp315-cp315t-win32.whl", hash = "sha256:1657923d2d45afb66526e5b933e5b3052e6bdea196c90d3abb2424e18c77dae8", size = 6474384, upload-time = "2026-07-01T11:56:18.855Z" },
     { url = "https://files.pythonhosted.org/packages/e4/04/62bcd9f844984c5938d3b05264a61d797a29d3e0812341a8204af70bbdee/pillow-12.3.0-cp315-cp315t-win_amd64.whl", hash = "sha256:8cd2f7bdda092d99c9fc2fb7391354f306d01443d22785d0cbfafa2e2c8bb418", size = 7243537, upload-time = "2026-07-01T11:56:21.214Z" },
     { url = "https://files.pythonhosted.org/packages/3d/68/1f3066acedf37673694a7141381d8f811ae97f30d34413d236abe7d489f1/pillow-12.3.0-cp315-cp315t-win_arm64.whl", hash = "sha256:06ff022112bc9cbf83b60f8e028d94ad87b60621706487e65f673de61610ab59", size = 2567491, upload-time = "2026-07-01T11:56:23.506Z" },
+]
+
+[[package]]
+name = "pip"
+version = "26.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ae/15/4500e320e6b101ec3b719ae85b697d9940b6cda672bc555bd6016fc60c6f/pip-26.2.1.tar.gz", hash = "sha256:f6ad667e89a1fe78046c8f13232b247200f5258d7828f3f7883d660878e0813f", size = 1848877, upload-time = "2026-08-04T22:51:14.148Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f3/6e/1736e5b4ae2b778ef2f81c47d797de9f891d4d8acb047a24ca37a60294dd/pip-26.2.1-py3-none-any.whl", hash = "sha256:71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e", size = 1816632, upload-time = "2026-08-04T22:51:12.472Z" },
+]
+
+[[package]]
+name = "pip-system-certs"
+version = "5.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pip" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7d/6a/563b05a4f6c9ddc205c98bb413e74221368efb98b8fb9cca96b578b8930c/pip_system_certs-5.3.tar.gz", hash = "sha256:19c8bf9957bcce7d69c4dbc2d0b2ef13de1984d53f50a59012e6dbbad0af67c6", size = 6395, upload-time = "2025-10-16T06:14:55.217Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9f/57/752b63c609affae8f26ae0f1d1103d6ea7e707ad45943f62f7422936071d/pip_system_certs-5.3-py3-none-any.whl", hash = "sha256:3fbb5de62e374a99b688b1ad06e64ee5c4aeb633ef23e3a677d32e3e84fd863c", size = 6896, upload-time = "2025-10-16T06:14:54.072Z" },
 ]
 
 [[package]]

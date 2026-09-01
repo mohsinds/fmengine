@@ -8,7 +8,7 @@ from pathlib import Path
 from fmtrader.core.enums import InstrumentClass, Side
 from fmtrader.core.errors import DataError
 from fmtrader.data.adapters.base import AdapterCapabilities
-from fmtrader.data.adapters.dukascopy import get_adapter
+from fmtrader.data.adapters.registry import get_adapter
 from fmtrader.data.calendars import get_calendar
 from fmtrader.data.catalog import Catalog, SnapshotManifest, write_snapshot
 from fmtrader.data.quality import QualityReport, print_coverage_table, run_quality_gate

@@ -135,8 +135,41 @@ XAUUSD_FX = SessionCalendar(
     holidays=_XAU_HOLIDAYS,
 )
 
+# COMEX metals (GC/MGC): Sun 18:00 ET -> Fri 17:00 ET with daily break 17:00-18:00 ET.
+# Stored in UTC assuming EST (UTC-5) for holiday/session classification - good enough
+# for gap tagging; DST fine-tuning can land with live Databento onboarding.
+_COMEX_HOLIDAYS = frozenset(
+    {
+        datetime(2021, 1, 1, tzinfo=UTC),
+        datetime(2021, 12, 25, tzinfo=UTC),
+        datetime(2022, 1, 1, tzinfo=UTC),
+        datetime(2022, 12, 25, tzinfo=UTC),
+        datetime(2023, 1, 1, tzinfo=UTC),
+        datetime(2023, 12, 25, tzinfo=UTC),
+        datetime(2024, 1, 1, tzinfo=UTC),
+        datetime(2024, 12, 25, tzinfo=UTC),
+        datetime(2025, 1, 1, tzinfo=UTC),
+        datetime(2025, 12, 25, tzinfo=UTC),
+        datetime(2026, 1, 1, tzinfo=UTC),
+    }
+)
+
+COMEX_METALS = SessionCalendar(
+    name="comex_metals",
+    week_open_weekday=6,  # Sunday
+    week_open_hour=23,  # 18:00 ET ≈ 23:00 UTC (EST)
+    week_open_minute=0,
+    week_close_weekday=4,  # Friday
+    week_close_hour=22,  # 17:00 ET ≈ 22:00 UTC (EST)
+    week_close_minute=0,
+    daily_break_start_hour=22,
+    daily_break_end_hour=23,
+    holidays=_COMEX_HOLIDAYS,
+)
+
 _REGISTRY: dict[str, SessionCalendar] = {
     XAUUSD_FX.name: XAUUSD_FX,
+    COMEX_METALS.name: COMEX_METALS,
 }
 
 

@@ -1,0 +1,13 @@
+# Continuous GC series from raw CME contracts (Databento OHLCV + OI).
+# Raw contracts remain the source of truth; continuous is research-only.
+
+root: GC
+continuous_symbol: GC_c1
+timeframe: 1d
+adapter: databento
+instrument_class: futures_continuous
+adjustment: back_adjusted  # panama causal forward
+roll_rule: volume_crossover
+roll_params:
+  confirm_days: 1
+# Optional: open_interest_crossover | days_before_expiry

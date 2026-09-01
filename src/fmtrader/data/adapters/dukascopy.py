@@ -87,7 +87,10 @@ class DukascopyAdapter:
 
 
 def get_adapter(name: str) -> DukascopyAdapter:
-    """Resolve an adapter by CLI name."""
-    if name == "dukascopy":
-        return DukascopyAdapter()
-    raise AdapterError(f"Unknown adapter: {name}")
+    """Deprecated — use ``fmtrader.data.adapters.registry.get_adapter``."""
+    from fmtrader.data.adapters.registry import get_adapter as _get
+
+    adapter = _get(name)
+    if not isinstance(adapter, DukascopyAdapter):
+        raise AdapterError(f"dukascopy.get_adapter only returns Dukascopy; got {name}")
+    return adapter

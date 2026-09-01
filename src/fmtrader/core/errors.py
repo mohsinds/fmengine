@@ -51,3 +51,7 @@ class AgentError(FmtraderError):
 
 class BudgetError(AgentError):
     """Raised when an LLM call would breach a budget cap."""
+
+
+class RiskError(FmtraderError):
+    """Raised for risk sizing, calibration, or limits failures."""

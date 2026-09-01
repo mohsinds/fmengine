@@ -39,6 +39,8 @@ data/journals/*
 !data/journals/.gitkeep
 data/ledger/*
 !data/ledger/.gitkeep
+data/risk/*
+!data/risk/.gitkeep
 artifacts/*
 !artifacts/.gitkeep
 download/*.csv

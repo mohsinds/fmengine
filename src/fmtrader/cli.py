@@ -26,6 +26,7 @@ from fmtrader.data.cli import data_app  # noqa: E402
 from fmtrader.execution.cli import execution_app  # noqa: E402
 from fmtrader.features.cli import features_app  # noqa: E402
 from fmtrader.providers.cli import providers_app  # noqa: E402
+from fmtrader.risk.cli import risk_app  # noqa: E402
 
 app.add_typer(data_app, name="data")
 app.add_typer(features_app, name="features")
@@ -36,6 +37,7 @@ app.add_typer(registry_app, name="registry")
 app.add_typer(execution_app, name="execution")
 app.add_typer(campaign_app, name="campaign")
 app.add_typer(worker_app, name="worker")
+app.add_typer(risk_app, name="risk")
 
 console = Console()
 

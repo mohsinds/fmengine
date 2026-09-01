@@ -17,16 +17,17 @@ services:
       QDB_PG_PASSWORD: ${QUESTDB_PASSWORD:?QUESTDB_PASSWORD is not set. Copy .env.example to .env and set real credentials before running make up.}
       # Keep QuestDB's own memory footprint predictable
       QDB_SHARED_WORKER_COUNT: "4"
-      QDB_CAIRO_SQL_COPY_ROOT: /var/lib/questdb/import
     volumes:
       - questdb_data:/var/lib/questdb
-      - ./data/catalog:/var/lib/questdb/import:ro
+      # Phase 2+: mount catalog for COPY FROM via a writable import root inside the volume.
+      # Do not bind-mount over the import root itself — QuestDB must create that directory.
     deploy:
       resources:
         limits:
           memory: 2G
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/status || exit 1"]
+      # QuestDB image has no curl; use bash /dev/tcp against the HTTP port.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000'"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -118,12 +119,16 @@ services:
         condition: service_healthy
     ports:
       - "5001:5000"
-    command: >
-      sh -c "pip install --no-cache-dir psycopg2-binary &&
-             mlflow server
-             --host 0.0.0.0 --port 5000
-             --backend-store-uri postgresql://${POSTGRES_USER:?POSTGRES_USER is not set}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set}@postgres:5432/mlflow
-             --default-artifact-root /mlflow/artifacts"
+    command:
+      - bash
+      - -lc
+      - |
+        pip install --no-cache-dir psycopg2-binary &&
+        exec mlflow server \
+          --host 0.0.0.0 \
+          --port 5000 \
+          --backend-store-uri "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/mlflow" \
+          --default-artifact-root /mlflow/artifacts
     volumes:
       - mlflow_artifacts:/mlflow/artifacts
     deploy:

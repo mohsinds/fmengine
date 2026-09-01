@@ -1,0 +1,150 @@
+[project]
+name = "fmtrader"
+version = "0.1.0"
+description = "FinnMetrics quantitative research and execution engine (fmengine)"
+readme = "README.md"
+authors = [
+    { name = "Mohsin", email = "mohsin.mr@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "polars>=1.17",
+    "pandas>=2.2",
+    "numpy>=2.0",
+    "pyarrow>=18.0",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "structlog>=24.0",
+    "typer>=0.12",
+    "rich>=13.0",
+    "duckdb>=1.1",
+    "httpx>=0.27",
+    "psutil>=6.0",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+data = [
+    "questdb>=2.0",
+    "tenacity>=9.0",
+]
+backtest = [
+    "vectorbt>=0.26",
+    "nautilus_trader>=1.219",
+    "numba>=0.60",
+    "scipy>=1.14",
+    "statsmodels>=0.14",
+]
+ml = [
+    "scikit-learn>=1.5",
+    "lightgbm>=4.5",
+    "xgboost>=2.1",
+    "mapie>=0.9",
+    "optuna>=4.0",
+]
+agents = [
+    "langgraph>=0.2",
+    "langchain-core>=0.3",
+    "langchain-anthropic>=0.3",
+    "langchain-openai>=0.2",
+    "langchain-google-genai>=2.0",
+    "ollama>=0.4",
+    "langsmith>=0.1",
+]
+orchestration = [
+    "temporalio>=1.7",
+    "redis>=5.0",
+]
+tracking = [
+    "mlflow>=2.19",
+    "psycopg[binary]>=3.2",
+    "sqlalchemy>=2.0",
+    "alembic>=1.14",
+]
+api = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=6.0",
+    "hypothesis>=6.0",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pre-commit>=4.0",
+    "ipykernel>=6.0",
+    "types-psutil>=6.0",
+]
+
+[project.scripts]
+fmtrader = "fmtrader.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.8,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv]
+default-groups = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=6.0",
+    "hypothesis>=6.0",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pre-commit>=4.0",
+    "ipykernel>=6.0",
+    "types-psutil>=6.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "SIM", # simplify
+    "RUF", # ruff-specific
+]
+ignore = [
+    "E501", # line length handled by formatter
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["fmtrader"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+mypy_path = "src"
+packages = ["fmtrader"]
+
+[[tool.mypy.overrides]]
+module = [
+    "vectorbt.*",
+    "nautilus_trader.*",
+    "questdb.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+    "integration: requires running Docker stack / Ollama",
+    "slow: long-running tests",
+    "leakage: look-ahead / leakage detection suite (Phase 5)",
+]
+addopts = "-q --strict-markers -m 'not integration and not slow and not leakage'"

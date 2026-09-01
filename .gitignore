@@ -14,10 +14,19 @@ __pycache__/
 .ruff_cache/
 htmlcov/
 .coverage
+uv.lock.bak
 
-# Data — large, regenerable, or environment-specific
-data/catalog/
-data/snapshots/*.json
+# Data & artifacts — large, regenerable, or environment-specific
+data/raw/*
+!data/raw/.gitkeep
+data/catalog/*
+!data/catalog/.gitkeep
+data/nautilus/*
+!data/nautilus/.gitkeep
+data/snapshots/*
+!data/snapshots/.gitkeep
+artifacts/*
+!artifacts/.gitkeep
 download/*.csv
 download/*.parquet
 *.db
@@ -40,3 +49,4 @@ out/
 *.log
 mlruns/
 .cursor/logs/
+.cursor/mcp.local.json

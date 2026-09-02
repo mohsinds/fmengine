@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
   apiGet,
@@ -64,8 +65,12 @@ export default function CampaignsPage() {
             <tbody>
               {data.items.map((c: CampaignListItem) => (
                 <tr key={c.id}>
-                  <td>{c.name}</td>
-                  <td className="num">{c.id}</td>
+                  <td>
+                    <Link href={`/campaigns/${c.id}`}>{c.name}</Link>
+                  </td>
+                  <td className="num">
+                    <Link href={`/campaigns/${c.id}`}>{c.id.slice(0, 8)}…</Link>
+                  </td>
                   <td>{c.strategy}</td>
                   <td className="num">{c.generation}</td>
                   <td>
@@ -73,6 +78,9 @@ export default function CampaignsPage() {
                   </td>
                   <td>
                     <div className="row-actions">
+                      <Link className="btn" href={`/campaigns/${c.id}`}>
+                        Open
+                      </Link>
                       <button
                         type="button"
                         className="btn"

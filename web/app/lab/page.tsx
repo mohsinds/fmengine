@@ -226,6 +226,10 @@ export default function LabPage() {
                   </option>
                 ))}
               </select>
+              <span className="muted" style={{ fontSize: 12, display: "block", marginTop: 4 }}>
+                Indicator family is fixed by the strategy module (e.g. ema_cross → EMA).
+                The LLM does not pick indicators — see docs/INDICATORS_AND_EXPERIMENTS.md
+              </span>
             </label>
             <label>
               Dataset

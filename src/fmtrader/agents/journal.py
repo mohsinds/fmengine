@@ -18,6 +18,8 @@ def render_generation_markdown(
     next_search_space: dict[str, Any] | None,
     critique: str,
     decision: str,
+    ingredients: dict[str, Any] | None = None,
+    llm_meta: dict[str, Any] | None = None,
 ) -> str:
     lines = [
         f"# Campaign `{campaign_id}` — Generation {generation}",
@@ -68,6 +70,14 @@ def render_generation_markdown(
             "",
             decision or "(none)",
             "",
+            "## Ingredients",
+            "",
+            f"```json\n{ingredients or {}}\n```",
+            "",
+            "## LLM layers",
+            "",
+            f"```json\n{llm_meta or {}}\n```",
+            "",
             "## Next search space",
             "",
             f"```json\n{next_search_space or {}}\n```",
@@ -99,6 +109,8 @@ class ResearchJournal:
         next_search_space: dict[str, Any] | None,
         critique: str,
         decision: str,
+        ingredients: dict[str, Any] | None = None,
+        llm_meta: dict[str, Any] | None = None,
     ) -> Path:
         md = render_generation_markdown(
             campaign_id=campaign_id,
@@ -110,6 +122,8 @@ class ResearchJournal:
             next_search_space=next_search_space,
             critique=critique,
             decision=decision,
+            ingredients=ingredients,
+            llm_meta=llm_meta,
         )
         path = self.campaign_dir(campaign_id) / f"generation_{generation:04d}.md"
         path.write_text(md, encoding="utf-8")
@@ -204,3 +218,34 @@ class ResearchJournal:
         if not parts:
             return f"No journal for campaign {campaign_id}"
         return "\n\n".join(parts)
+
+    def write_trace_event(self, campaign_id: str, event: dict[str, Any]) -> Path:
+        import json
+
+        path = self.campaign_dir(campaign_id) / "trace.jsonl"
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(event, default=str) + "\n")
+        return path
+
+    def read_trace(self, campaign_id: str) -> list[dict[str, Any]]:
+        import json
+
+        path = self.campaign_dir(campaign_id) / "trace.jsonl"
+        if not path.exists():
+            return []
+        rows: list[dict[str, Any]] = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        return rows
+
+    def read_generation_markdown(self, campaign_id: str, generation: int) -> str | None:
+        path = self.campaign_dir(campaign_id) / f"generation_{generation:04d}.md"
+        if not path.exists():
+            return None
+        return path.read_text(encoding="utf-8")

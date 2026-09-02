@@ -1,4 +1,4 @@
-"""Campaign control endpoints — FRONTEND_SPEC §7."""
+"""Campaign control endpoints — FRONTEND_SPEC §7 + trace / ledger."""
 
 from __future__ import annotations
 
@@ -10,7 +10,9 @@ from pydantic import BaseModel
 
 from fmtrader.agents.budget import BudgetCaps
 from fmtrader.agents.campaign import CampaignConfig
+from fmtrader.agents.ingredients import list_ingredients
 from fmtrader.agents.journal import ResearchJournal
+from fmtrader.agents.ledger import CostLedger
 from fmtrader.agents.runner import (
     CampaignStore,
     create_campaign,
@@ -22,6 +24,7 @@ from fmtrader.agents.runner import (
 from fmtrader.api.deps import get_paths
 from fmtrader.api.sse import SseEvent, throttled_sse
 from fmtrader.core.errors import AgentError
+from fmtrader.orchestration.temporal_signals import signal_temporal_sync
 
 router = APIRouter(tags=["campaigns"])
 
@@ -61,9 +64,11 @@ def list_campaigns() -> dict[str, Any]:
                 "id": state.campaign_id,
                 "status": state.status,
                 "generation": state.generation,
+                "max_generations": state.config.max_generations,
                 "strategy": state.config.strategy,
                 "dataset_id": state.config.dataset_id,
                 "name": state.config.name,
+                "use_stub_llm": state.config.use_stub_llm,
             }
         )
     return {"items": items, "count": len(items)}
@@ -96,7 +101,16 @@ def get_campaign(campaign_id: str) -> dict[str, Any]:
         state = _store().load(campaign_id)
     except AgentError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return state.to_dict()
+    out = state.to_dict()
+    out["budget"] = {
+        "per_campaign_usd": (state.budget_override or state.config.budget).per_campaign_usd,
+        "per_day_usd": (state.budget_override or state.config.budget).per_day_usd,
+        "per_generation_usd": (state.budget_override or state.config.budget).per_generation_usd,
+        "openai_usd": (state.budget_override or state.config.budget).openai_usd,
+        "anthropic_usd": (state.budget_override or state.config.budget).anthropic_usd,
+        "spent_usd": CostLedger().spent_campaign(campaign_id),
+    }
+    return out
 
 
 @router.post("/campaigns/{campaign_id}/pause")
@@ -105,16 +119,31 @@ def pause_campaign(campaign_id: str) -> dict[str, Any]:
         state = signal_pause(campaign_id, store=_store())
     except AgentError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return state.to_dict()
+    temporal = signal_temporal_sync(campaign_id, "pause")
+    out = state.to_dict()
+    out["temporal_signaled"] = temporal
+    return out
 
 
 @router.post("/campaigns/{campaign_id}/resume")
 def resume_campaign(campaign_id: str) -> dict[str, Any]:
     try:
-        state = signal_resume(campaign_id, store=_store())
+        # Filesystem flag first; Temporal resume if workflow running
+        store = _store()
+        state = store.load(campaign_id)
+        state.pause_requested = False
+        if state.status == "paused":
+            state.status = "running"
+        store.save(state)
     except AgentError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return state.to_dict()
+    temporal = signal_temporal_sync(campaign_id, "resume")
+    if not temporal and state.status == "paused":
+        # Local-only resume path
+        state = signal_resume(campaign_id, store=_store())
+    out = state.to_dict()
+    out["temporal_signaled"] = temporal
+    return out
 
 
 @router.post("/campaigns/{campaign_id}/abort")
@@ -123,7 +152,10 @@ def abort_campaign(campaign_id: str) -> dict[str, Any]:
         state = signal_abort(campaign_id, store=_store())
     except AgentError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return state.to_dict()
+    temporal = signal_temporal_sync(campaign_id, "abort")
+    out = state.to_dict()
+    out["temporal_signaled"] = temporal
+    return out
 
 
 @router.patch("/campaigns/{campaign_id}/budget")
@@ -144,8 +176,17 @@ def patch_budget(campaign_id: str, body: BudgetPatch) -> dict[str, Any]:
             if body.per_generation_usd is not None
             else base.per_generation_usd
         ),
+        openai_usd=base.openai_usd,
+        anthropic_usd=base.anthropic_usd,
     )
     state = signal_adjust_budget(campaign_id, caps, store=store)
+    signal_temporal_sync(
+        campaign_id,
+        "adjust_budget",
+        caps.per_campaign_usd,
+        caps.per_day_usd,
+        caps.per_generation_usd,
+    )
     return {"id": campaign_id, "budget": caps.__dict__, "status": state.status}
 
 
@@ -155,7 +196,24 @@ def list_generations(campaign_id: str) -> dict[str, Any]:
         state = _store().load(campaign_id)
     except AgentError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    gens = [{"n": n, "status": "stub"} for n in range(1, state.generation + 1)]
+    journal = ResearchJournal()
+    gens = []
+    for n in range(1, state.generation + 1):
+        ev = next((e for e in state.decision_trace if int(e.get("generation", -1)) == n), None)
+        if ev is None:
+            for te in journal.read_trace(campaign_id):
+                if int(te.get("generation", -1)) == n:
+                    ev = te
+                    break
+        gens.append(
+            {
+                "n": n,
+                "status": "complete" if n < state.generation or state.status != "running" else "current",
+                "has_journal": journal.read_generation_markdown(campaign_id, n) is not None,
+                "survivor_count": len(ev.get("survivors") or []) if ev else 0,
+                "ingredients": (ev or {}).get("ingredients", {}).get("ingredients", []),
+            }
+        )
     return {"campaign_id": campaign_id, "generations": gens, "current": state.generation}
 
 
@@ -165,14 +223,25 @@ def get_generation(campaign_id: str, n: int) -> dict[str, Any]:
         state = _store().load(campaign_id)
     except AgentError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    if n < 1 or n > state.generation:
+    if n < 1 or n > max(state.generation, 0):
         raise HTTPException(status_code=404, detail=f"Generation {n} not found")
+    journal = ResearchJournal()
+    ev = next((e for e in state.decision_trace if int(e.get("generation", -1)) == n), None)
+    if ev is None:
+        for te in journal.read_trace(campaign_id):
+            if int(te.get("generation", -1)) == n:
+                ev = te
+                break
+    md = journal.read_generation_markdown(campaign_id, n)
     return {
         "campaign_id": campaign_id,
         "generation": n,
-        "survivors": state.survivors if n == state.generation else [],
-        "search_space": state.search_space,
-        "status": "stub",
+        "event": ev,
+        "markdown": md,
+        "survivors": (ev or {}).get("survivors")
+        or (state.survivors if n == state.generation else []),
+        "search_space": state.search_space if n == state.generation else None,
+        "status": "ok",
     }
 
 
@@ -184,6 +253,49 @@ def get_journal(campaign_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     md = ResearchJournal().read_report(campaign_id)
     return {"campaign_id": campaign_id, "markdown": md}
+
+
+@router.get("/campaigns/{campaign_id}/trace")
+def get_trace(campaign_id: str) -> dict[str, Any]:
+    try:
+        state = _store().load(campaign_id)
+    except AgentError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    disk = ResearchJournal().read_trace(campaign_id)
+    # Prefer in-memory/state then merge disk
+    by_gen: dict[int, dict[str, Any]] = {}
+    for e in disk + list(state.decision_trace):
+        g = int(e.get("generation", -1))
+        if g >= 0:
+            by_gen[g] = e
+    events = [by_gen[k] for k in sorted(by_gen)]
+    return {
+        "campaign_id": campaign_id,
+        "events": events,
+        "count": len(events),
+        "active_ingredients": state.active_ingredients,
+    }
+
+
+@router.get("/campaigns/{campaign_id}/llm-ledger")
+def get_llm_ledger(campaign_id: str, limit: int = 200) -> dict[str, Any]:
+    try:
+        _store().load(campaign_id)
+    except AgentError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    ledger = CostLedger()
+    return {
+        "campaign_id": campaign_id,
+        "spent_usd": ledger.spent_campaign(campaign_id),
+        "entries": ledger.list_entries(campaign_id, limit=limit),
+        "count": ledger.count(campaign_id=campaign_id),
+    }
+
+
+@router.get("/ingredients")
+def get_ingredients() -> dict[str, Any]:
+    items = list_ingredients()
+    return {"items": items, "count": len(items)}
 
 
 @router.get("/campaigns/{campaign_id}/stream")
@@ -198,26 +310,45 @@ async def campaign_stream(
     except AgentError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     seq = 0
+    last_gen = -1
 
     def produce() -> list[SseEvent]:
-        nonlocal seq
+        nonlocal seq, last_gen
         state = store.load(campaign_id)
         seq += 1
-        return [
+        events = [
             SseEvent(
                 event="campaign.status",
                 data={
                     "id": campaign_id,
                     "status": state.status,
                     "generation": state.generation,
+                    "max_generations": state.config.max_generations,
+                    "spent_usd": CostLedger().spent_campaign(campaign_id),
+                    "ingredients": state.active_ingredients,
                 },
                 id=str(seq),
             )
         ]
+        if state.generation != last_gen:
+            seq += 1
+            events.append(
+                SseEvent(
+                    event="generation.progress",
+                    data={
+                        "id": campaign_id,
+                        "generation": state.generation,
+                        "status": state.status,
+                    },
+                    id=str(seq),
+                )
+            )
+            last_gen = state.generation
+        return events
 
     async def gen() -> Any:
         async for chunk in throttled_sse(
-            produce, last_event_id=last_event_id, max_iterations=3, idle_sleep=0.05
+            produce, last_event_id=last_event_id, max_iterations=30, idle_sleep=0.5
         ):
             if await request.is_disconnected():
                 break

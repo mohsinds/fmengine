@@ -31,13 +31,13 @@ def _router_for(state: CampaignState) -> LLMRouter:
             local=StubLLMClient(response=_stub_hypothesize_payload(state)),
             frontier=StubLLMClient(response='{"critique":"stub"}'),
         )
-    # Ollama for hypothesize; Claude/OpenAI for critique/select/report under provider caps
     return default_router(
         caps=caps,
         ledger=ledger,
         stub=False,
         campaign_id=state.campaign_id,
         sweep_active=True,
+        routing=state.config.llm_routing,
     )
 
 

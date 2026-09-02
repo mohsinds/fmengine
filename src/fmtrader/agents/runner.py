@@ -145,7 +145,7 @@ def run_generation(
     state.leaderboard.extend(scored)
     listed = shortlist(scored, state)
     fidelity = fidelity_eval(listed, state)
-    critique, decision, survivors, next_spaces = critique_and_select(
+    critique, decision, survivors, next_spaces, meta = critique_and_select(
         state, router, scored, fidelity
     )
     write_journal(
@@ -158,6 +158,8 @@ def run_generation(
         critique=critique,
         decision=decision,
         journal=journal,
+        ingredients=meta.get("ingredients"),
+        llm_meta=meta.get("llm"),
     )
     state.survivors = survivors
     state.search_spaces = next_spaces
@@ -195,6 +197,7 @@ def run_campaign_local(
                 stub=False,
                 campaign_id=state.campaign_id,
                 sweep_active=True,
+                routing=state.config.llm_routing,
             )
 
     limit = max_generations if max_generations is not None else state.config.max_generations

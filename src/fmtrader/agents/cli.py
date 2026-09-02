@@ -194,18 +194,6 @@ async def _start_temporal(
 
 
 async def _signal_temporal(campaign_id: str, signal: str) -> bool:
-    try:
-        from temporalio.client import Client, WorkflowExecutionStatus
+    from fmtrader.orchestration.temporal_signals import signal_temporal_workflow
 
-        from fmtrader.config.settings import get_settings
-
-        settings = get_settings()
-        client = await Client.connect(f"{settings.temporal_host}:{settings.temporal_port}")
-        handle = client.get_workflow_handle(campaign_id)
-        desc = await handle.describe()
-        if desc.status != WorkflowExecutionStatus.RUNNING:
-            return False
-        await handle.signal(signal)
-        return True
-    except Exception:
-        return False
+    return await signal_temporal_workflow(campaign_id, signal)

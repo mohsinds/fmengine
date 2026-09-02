@@ -110,6 +110,7 @@ def build_features(
     )
     if uses_providers:
         from fmtrader.providers.compose import build_with_providers
+        from fmtrader.providers.news_feed import NewsFeedProvider
         from fmtrader.providers.registry import ProviderRegistry, default_registry
         from fmtrader.providers.synthetic_news import SyntheticNewsProvider
         from fmtrader.providers.technical import TechnicalProvider
@@ -119,6 +120,8 @@ def build_features(
             reg.register(TechnicalProvider(caps=caps))
         if not reg.has("synthetic_news") and not reg.is_disabled("synthetic_news"):
             reg.register(SyntheticNewsProvider())
+        if not reg.has("news_feed") and not reg.is_disabled("news_feed"):
+            reg.register(NewsFeedProvider())
         return build_with_providers(
             bars,
             definition,

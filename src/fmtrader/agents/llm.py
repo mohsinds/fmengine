@@ -264,6 +264,8 @@ class LLMRouter:
         local: LLMClient | None = None,
         frontier: LLMClient | None = None,
         local_14b: LLMClient | None = None,
+        purpose_clients: dict[str, LLMClient] | None = None,
+        routing: Any | None = None,
         min_available_gb_for_14b: float = 10.0,
         sweep_active: bool = False,
     ) -> None:
@@ -273,10 +275,21 @@ class LLMRouter:
             provider="stub", model="stub-f", response='{"ok": true}'
         )
         self.local_14b = local_14b
+        self.purpose_clients = purpose_clients or {}
+        self.routing = routing
         self.min_available_gb_for_14b = min_available_gb_for_14b
         self.sweep_active = sweep_active
 
     def select_tier(self, purpose: Purpose) -> Tier:
+        # If purpose is routed to a paid provider, treat as frontier for budget accounting.
+        client = self.purpose_clients.get(purpose)
+        if client is not None and client.provider in {"openai", "anthropic"}:
+            return "F"
+        if purpose in _FRONTIER_PURPOSES and client is None:
+            return "F"
+        if purpose in _FRONTIER_PURPOSES and client is not None and client.provider == "ollama":
+            # Local "frontier" layer — still tagged F for journal clarity but $0 cost
+            return "F"
         if purpose in _FRONTIER_PURPOSES:
             return "F"
         return "L"
@@ -298,6 +311,22 @@ class LLMRouter:
             return self.local
         return self.local_14b
 
+    def _client_for_purpose(self, purpose: Purpose) -> LLMClient:
+        if purpose in self.purpose_clients:
+            client = self.purpose_clients[purpose]
+            # Heavy Ollama models during sweep → fall back to 7b local
+            if (
+                self.sweep_active
+                and client.provider == "ollama"
+                and ("14b" in client.model.lower() or "70b" in client.model.lower())
+            ):
+                log.info("llm_skip_heavy_ollama_during_sweep", model=client.model)
+                return self.local
+            return client
+        if purpose in _FRONTIER_PURPOSES:
+            return self.frontier
+        return self.select_local_client()
+
     def complete(
         self,
         prompt: str,
@@ -310,21 +339,16 @@ class LLMRouter:
         estimated_completion_tokens: int | None = None,
     ) -> dict[str, Any]:
         tier = self.select_tier(purpose)
-        if tier == "F":
-            client = self.frontier
-            if isinstance(client, MultiFrontierClient):
-                client = client.for_purpose(purpose)
-                client.campaign_id = campaign_id
-                # Estimate against preferred provider under cap (for authorize only)
-                try:
-                    preferred = client._pick()
-                    provider, model = preferred.provider, preferred.model
-                except AgentError:
-                    provider, model = "anthropic", "frontier"
-            else:
-                provider, model = client.provider, client.model
+        client = self._client_for_purpose(purpose)
+        if isinstance(client, MultiFrontierClient):
+            client = client.for_purpose(purpose)
+            client.campaign_id = campaign_id
+            try:
+                preferred = client._pick()
+                provider, model = preferred.provider, preferred.model
+            except AgentError:
+                provider, model = "anthropic", "frontier"
         else:
-            client = self.select_local_client()
             provider, model = client.provider, client.model
 
         pt_est = estimated_prompt_tokens or max(1, len(prompt) // 4)
@@ -364,7 +388,7 @@ class LLMRouter:
             completion_tokens=ct,
             cost_usd=cost,
         )
-        return {
+        result = {
             "text": text,
             "provider": provider,
             "model": model,
@@ -375,6 +399,74 @@ class LLMRouter:
             "cost_usd": cost,
             "purpose": purpose,
         }
+        try:
+            from fmtrader.agents.tracing import log_llm_run
+
+            log_llm_run(
+                name=f"llm.{purpose}",
+                inputs={"prompt": prompt[:2000], "purpose": purpose},
+                outputs={
+                    "text": text[:2000],
+                    "provider": provider,
+                    "model": model,
+                    "cost_usd": cost,
+                },
+                metadata={
+                    "campaign_id": campaign_id,
+                    "generation": generation,
+                    "tier": tier,
+                },
+            )
+        except Exception:
+            pass
+        return result
+
+
+def build_client(
+    provider: str,
+    model: str,
+    *,
+    settings: Any | None = None,
+    ledger: CostLedger | None = None,
+    campaign_id: str = "",
+    caps: BudgetCaps | None = None,
+) -> LLMClient:
+    """Instantiate a single LLM client from provider/model names."""
+    from fmtrader.config.settings import get_settings
+
+    settings = settings or get_settings()
+    p = provider.lower()
+    if p == "ollama":
+        return OllamaLLMClient(model=model, base_url=settings.ollama_url)
+    if p == "openai":
+        if not settings.openai_api_key:
+            raise AgentError("OPENAI_API_KEY not configured for openai layer")
+        return OpenAILLMClient(api_key=settings.openai_api_key, model=model)
+    if p == "anthropic":
+        if not settings.anthropic_api_key:
+            raise AgentError("ANTHROPIC_API_KEY not configured for anthropic layer")
+        return AnthropicLLMClient(api_key=settings.anthropic_api_key, model=model)
+    if p == "stub":
+        return StubLLMClient(provider="stub", model=model or "stub")
+    if p == "multi":
+        c = caps or BudgetCaps()
+        anthropic = (
+            AnthropicLLMClient(api_key=settings.anthropic_api_key)
+            if settings.anthropic_api_key
+            else None
+        )
+        openai = (
+            OpenAILLMClient(api_key=settings.openai_api_key) if settings.openai_api_key else None
+        )
+        return MultiFrontierClient(
+            anthropic=anthropic,
+            openai=openai,
+            ledger=ledger or CostLedger(),
+            campaign_id=campaign_id,
+            anthropic_cap_usd=c.anthropic_usd or 5.0,
+            openai_cap_usd=c.openai_usd or 3.0,
+        )
+    raise AgentError(f"Unknown LLM provider: {provider}")
 
 
 def default_router(
@@ -384,45 +476,56 @@ def default_router(
     stub: bool = True,
     campaign_id: str = "",
     sweep_active: bool = True,
+    routing: Any | None = None,
 ) -> LLMRouter:
-    """Build router. Non-stub: Ollama for hypothesize; Claude/OpenAI for critical gating."""
+    """Build router from optional ``LLMRoutingConfig`` (all-local by default)."""
+    from fmtrader.agents.routing import LLMRoutingConfig
+    from fmtrader.config.settings import get_settings
+
     ledger = ledger or CostLedger()
     gov = BudgetGovernor(caps or BudgetCaps(), ledger=ledger)
     if stub:
         return LLMRouter(gov)
-    from fmtrader.config.settings import get_settings
 
     settings = get_settings()
-    local = OllamaLLMClient(model="qwen2.5-coder:7b", base_url=settings.ollama_url)
+    cfg: LLMRoutingConfig = routing if isinstance(routing, LLMRoutingConfig) else LLMRoutingConfig()
+    purpose_clients: dict[str, LLMClient] = {}
+    for purpose, route in cfg.as_map().items():
+        try:
+            purpose_clients[purpose] = build_client(
+                route.provider,
+                route.model,
+                settings=settings,
+                ledger=ledger,
+                campaign_id=campaign_id,
+                caps=caps,
+            )
+        except AgentError as exc:
+            log.warning(
+                "llm_layer_client_unavailable",
+                purpose=purpose,
+                provider=route.provider,
+                error=str(exc),
+            )
+            purpose_clients[purpose] = StubLLMClient(
+                provider="stub",
+                model=f"missing-{route.provider}",
+                response='{"ok":false,"error":"provider unavailable"}',
+            )
+
+    local = purpose_clients.get("hypothesize") or OllamaLLMClient(
+        model="qwen2.5-coder:7b", base_url=settings.ollama_url
+    )
     local_14b = OllamaLLMClient(
         model="qwen2.5:14b-instruct-q4_K_M", base_url=settings.ollama_url
     )
-    anthropic = (
-        AnthropicLLMClient(api_key=settings.anthropic_api_key)
-        if settings.anthropic_api_key
-        else None
-    )
-    openai = (
-        OpenAILLMClient(api_key=settings.openai_api_key) if settings.openai_api_key else None
-    )
-    if anthropic is None and openai is None:
-        frontier: LLMClient = StubLLMClient(
-            provider="stub", model="frontier-missing-keys", response='{"critique":"no frontier keys"}'
-        )
-    else:
-        c = caps or BudgetCaps()
-        frontier = MultiFrontierClient(
-            anthropic=anthropic,
-            openai=openai,
-            ledger=ledger,
-            campaign_id=campaign_id,
-            anthropic_cap_usd=c.anthropic_usd or 5.0,
-            openai_cap_usd=c.openai_usd or 3.0,
-        )
+    frontier = purpose_clients.get("critique") or local
     return LLMRouter(
         gov,
         local=local,
         local_14b=local_14b,
         frontier=frontier,
+        purpose_clients=purpose_clients,
+        routing=cfg,
         sweep_active=sweep_active,
     )

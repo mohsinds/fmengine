@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from fmtrader.agents.campaign import CampaignState, load_search_spaces, bind_search_spaces
+from fmtrader.agents.campaign import CampaignState, bind_search_spaces, load_search_spaces
 from fmtrader.agents.journal import ResearchJournal
 from fmtrader.agents.llm import LLMRouter
 from fmtrader.agents.proposals import (
@@ -319,13 +319,20 @@ def critique_and_select(
     router: LLMRouter,
     results: list[dict[str, Any]],
     shortlisted: list[dict[str, Any]],
-) -> tuple[str, str, list[dict[str, Any]], dict[str, dict[str, list[Any]]]]:
+) -> tuple[str, str, list[dict[str, Any]], dict[str, dict[str, list[Any]]], dict[str, Any]]:
+    from fmtrader.agents.ingredients import (
+        list_ingredients,
+        parse_ingredients_from_llm_text,
+        validate_ingredient_recipe,
+    )
+
     prompt = (
         f"Critique these shortlist results for campaign {state.campaign_id} gen {state.generation}: "
         f"{json.dumps(shortlisted)[:2000]}. Suggest next search space refinement as JSON."
     )
     critique = "(stub critique)"
     decision = "Keep top survivors; shrink search space around best params."
+    llm_meta: dict[str, Any] = {"critique": {}, "select": {}, "ingredients": {}}
     try:
         out = router.complete(
             prompt,
@@ -334,10 +341,87 @@ def critique_and_select(
             generation=state.generation,
         )
         critique = str(out["text"])[:2000]
+        llm_meta["critique"] = {
+            "provider": out.get("provider"),
+            "model": out.get("model"),
+            "cost_usd": out.get("cost_usd"),
+        }
     except Exception as exc:
         critique = f"(critique unavailable: {exc})"
 
     survivors = shortlisted[: state.config.shortlist_size]
+    try:
+        select_prompt = (
+            f"Select up to {state.config.shortlist_size} survivors from "
+            f"{json.dumps(shortlisted)[:1500]}. Reply with a short rationale."
+        )
+        sel = router.complete(
+            select_prompt,
+            purpose="select",
+            campaign_id=state.campaign_id,
+            generation=state.generation,
+            max_tokens=512,
+        )
+        decision = str(sel["text"])[:1000] or decision
+        llm_meta["select"] = {
+            "provider": sel.get("provider"),
+            "model": sel.get("model"),
+            "cost_usd": sel.get("cost_usd"),
+        }
+    except Exception as exc:
+        log.warning("select_llm_failed", error=str(exc))
+
+    ingredient_recipe: dict[str, Any] = {"ingredients": [], "rejected": []}
+    if state.config.allow_ingredient_proposals:
+        catalog = list_ingredients()
+        allowed = [c["name"] for c in catalog if c.get("implemented")]
+        try:
+            ing_prompt = (
+                "Propose experiment ingredients as JSON "
+                '{"ingredients":["name",...],"params":{}}. '
+                f"Choose only from: {allowed}. Prefer vol_regime_quantile, conformal_filter, "
+                "fractional_kelly, fixed_pct_risk, vol_stop when data allows. "
+                f"Shortlist context: {json.dumps(shortlisted)[:800]}"
+            )
+            ing_out = router.complete(
+                ing_prompt,
+                purpose="report",
+                campaign_id=state.campaign_id,
+                generation=state.generation,
+                max_tokens=512,
+            )
+            llm_meta["ingredients"] = {
+                "provider": ing_out.get("provider"),
+                "model": ing_out.get("model"),
+                "cost_usd": ing_out.get("cost_usd"),
+            }
+            parsed = parse_ingredients_from_llm_text(str(ing_out.get("text") or ""))
+            # Dataset capabilities — XAUUSD bid-only today
+            has_volume = False
+            try:
+                from fmtrader.api.deps import get_paths
+                from fmtrader.data.ingest import load_manifest
+
+                snap = load_manifest(get_paths().snapshots, state.config.dataset_id)
+                has_volume = bool(snap.has_volume)
+            except Exception:
+                has_volume = False
+            validated = validate_ingredient_recipe(
+                parsed or {"ingredients": ["vol_regime_quantile", "fractional_kelly"]},
+                has_volume=has_volume,
+                has_spread=False,
+                has_model_artifact=False,
+                multi_asset=False,
+            )
+            ingredient_recipe = validated.recipe
+            state.active_ingredients = list(validated.accepted)
+        except Exception as exc:
+            log.warning("ingredient_propose_failed", error=str(exc))
+            ingredient_recipe = {
+                "ingredients": [],
+                "rejected": [{"name": "*", "reason": str(exc)}],
+            }
+
     spaces = {k: dict(v) for k, v in ensure_spaces(state).items()}
     if state.config.refine_space:
         # Shrink each strategy's space around its best survivor params
@@ -360,7 +444,10 @@ def critique_and_select(
         decision = f"Survivors={len(survivors)}; space refined. " + decision
     else:
         decision = f"Survivors={len(survivors)}; space held open (refine_space=false). " + decision
-    return critique, decision, survivors, spaces
+    return critique, decision, survivors, spaces, {
+        "llm": llm_meta,
+        "ingredients": ingredient_recipe,
+    }
 
 
 def write_journal(
@@ -374,6 +461,8 @@ def write_journal(
     critique: str,
     decision: str,
     journal: ResearchJournal | None = None,
+    ingredients: dict[str, Any] | None = None,
+    llm_meta: dict[str, Any] | None = None,
 ) -> Path:
     journal = journal or ResearchJournal()
     path = journal.write_generation(
@@ -386,8 +475,37 @@ def write_journal(
         next_search_space=next_search_space,
         critique=critique,
         decision=decision,
+        ingredients=ingredients,
+        llm_meta=llm_meta,
     )
     state.journal_paths.append(str(path))
+    # Structured trace for UI / APIs
+    event = {
+        "generation": state.generation,
+        "hypothesis": hypothesis,
+        "proposals": proposals,
+        "results_summary": [
+            {
+                "strategy": r.get("strategy"),
+                "sharpe": r.get("sharpe"),
+                "verdict": r.get("verdict"),
+                "trade_count": r.get("trade_count"),
+            }
+            for r in results[:20]
+        ],
+        "survivors": survivors,
+        "critique": critique,
+        "decision": decision,
+        "ingredients": ingredients or {},
+        "llm": llm_meta or {},
+        "next_search_space": next_search_space,
+    }
+    # Replace same-generation entry if re-run
+    state.decision_trace = [
+        e for e in state.decision_trace if int(e.get("generation", -1)) != state.generation
+    ]
+    state.decision_trace.append(event)
+    journal.write_trace_event(state.campaign_id, event)
     return path
 
 

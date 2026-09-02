@@ -52,6 +52,15 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(default="")
     gemini_api_key: str = Field(default="")
 
+    # LangSmith — optional LLM/agent tracing (never commit real keys)
+    langsmith_api_key: str = Field(default="")
+    langchain_api_key: str = Field(default="")
+    langsmith_project: str = Field(default="FMEngine")
+    langsmith_tracing: bool = Field(default=False)
+
+    # News — env key preferred; free RSS fallback when blank
+    news_api_key: str = Field(default="")
+
     # Memory budget (GB) — see ADR 0001
     memory_budget_total_gb: float = Field(default=24.0)
     memory_budget_docker_gb: float = Field(default=6.0)
@@ -82,6 +91,17 @@ class Settings(BaseSettings):
     def _empty_budget_to_zero(cls, value: object) -> object:
         if value is None or value == "":
             return 0.0
+        return value
+
+    @field_validator("langsmith_tracing", mode="before")
+    @classmethod
+    def _boolish(cls, value: object) -> object:
+        if isinstance(value, str):
+            v = value.strip().lower()
+            if v in {"", "0", "false", "no", "off"}:
+                return False
+            if v in {"1", "true", "yes", "on"}:
+                return True
         return value
 
     def require_infra_credentials(self) -> None:

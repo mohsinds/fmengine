@@ -10,6 +10,7 @@ import yaml
 from pydantic import BaseModel, Field, model_validator
 
 from fmtrader.agents.budget import BudgetCaps
+from fmtrader.agents.routing import LLMRoutingConfig
 from fmtrader.core.errors import AgentError
 
 
@@ -40,6 +41,12 @@ class CampaignConfig(BaseModel):
     initial_cash: float = 100_000.0
     """Paper capital used for backtest sizing / P&L reporting."""
 
+    llm_routing: LLMRoutingConfig = Field(default_factory=LLMRoutingConfig)
+    """Per-purpose provider/model map (Ollama local by default)."""
+
+    allow_ingredient_proposals: bool = True
+    """When True, critique/select may propose curated experiment ingredients."""
+
     @model_validator(mode="after")
     def _normalize_strategies(self) -> CampaignConfig:
         if not self.strategies:
@@ -62,6 +69,11 @@ class CampaignConfig(BaseModel):
                 per_generation_usd=float(budget.get("per_generation_usd", 0) or 0),
                 openai_usd=float(budget.get("openai_usd", 0) or 0),
                 anthropic_usd=float(budget.get("anthropic_usd", 0) or 0),
+            )
+        routing = data.pop("llm_routing", None)
+        if routing is not None:
+            data["llm_routing"] = LLMRoutingConfig.from_mapping(
+                routing if isinstance(routing, dict) else {}
             )
         return cls.model_validate(data)
 
@@ -95,6 +107,11 @@ class CampaignState:
     pause_requested: bool = False
     abort_requested: bool = False
     budget_override: BudgetCaps | None = None
+    active_ingredients: list[str] = field(default_factory=list)
+    """Accepted ingredient names for the latest generation."""
+
+    decision_trace: list[dict[str, Any]] = field(default_factory=list)
+    """Structured per-generation decisions for the progress UI / APIs."""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -110,6 +127,8 @@ class CampaignState:
             "last_error": self.last_error,
             "pause_requested": self.pause_requested,
             "abort_requested": self.abort_requested,
+            "active_ingredients": self.active_ingredients,
+            "decision_trace": self.decision_trace,
             "budget_override": (
                 None
                 if self.budget_override is None
@@ -125,7 +144,10 @@ class CampaignState:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CampaignState:
-        cfg = CampaignConfig.model_validate(data["config"])
+        cfg_raw = dict(data["config"])
+        if "llm_routing" in cfg_raw and isinstance(cfg_raw["llm_routing"], dict):
+            cfg_raw["llm_routing"] = LLMRoutingConfig.from_mapping(cfg_raw["llm_routing"])
+        cfg = CampaignConfig.model_validate(cfg_raw)
         bo = data.get("budget_override")
         spaces = dict(data.get("search_spaces") or {})
         flat = dict(data.get("search_space") or {})
@@ -145,6 +167,8 @@ class CampaignState:
             pause_requested=bool(data.get("pause_requested", False)),
             abort_requested=bool(data.get("abort_requested", False)),
             budget_override=BudgetCaps(**bo) if isinstance(bo, dict) else None,
+            active_ingredients=list(data.get("active_ingredients") or []),
+            decision_trace=list(data.get("decision_trace") or []),
         )
 
 

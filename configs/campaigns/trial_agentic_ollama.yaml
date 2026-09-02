@@ -1,5 +1,5 @@
-# Agentic multi-strategy campaign — Ollama for hypothesize; Claude/OpenAI for critical gating.
-# Caps: OpenAI $3 + Anthropic $5 (also enforced as openai_usd / anthropic_usd).
+# Agentic multi-strategy campaign — all-local Ollama by default.
+# Caps still apply if you override layers to OpenAI/Claude.
 # No weight fine-tuning — local models are inference-only for research decisions.
 name: trial_agentic_ollama
 dataset_id: xauusd_1m_bid_2021-01-03_2026-08-30
@@ -19,9 +19,18 @@ max_bars: 50000
 run_fidelity: false
 use_stub_llm: false
 refine_space: true
+allow_ingredient_proposals: true
 seed: 1
 initial_cash: 100000
 cost_config: configs/costs/xauusd_cfd.yaml
+llm_routing:
+  hypothesize: { provider: ollama, model: qwen2.5-coder:7b }
+  critique: { provider: ollama, model: qwen2.5:14b-instruct-q4_K_M }
+  select: { provider: ollama, model: qwen2.5:14b-instruct-q4_K_M }
+  report: { provider: ollama, model: qwen2.5-coder:7b }
+  # Cloud overrides (optional):
+  # critique: { provider: anthropic, model: claude-sonnet-4-5-20250929 }
+  # report: { provider: openai, model: gpt-4o-mini }
 budget:
   per_campaign_usd: 8.0
   per_day_usd: 8.0

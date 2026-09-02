@@ -16,6 +16,7 @@ console = Console()
 
 
 def _bootstrap_default_providers() -> None:
+    from fmtrader.providers.news_feed import NewsFeedProvider
     from fmtrader.providers.null import NullProvider
     from fmtrader.providers.optional_gated import OptionalDependencyProvider
     from fmtrader.providers.registry import default_registry, register_provider
@@ -27,6 +28,8 @@ def _bootstrap_default_providers() -> None:
         register_provider(TechnicalProvider())
     if not reg.has("synthetic_news") and not reg.is_disabled("synthetic_news"):
         register_provider(SyntheticNewsProvider())
+    if not reg.has("news_feed") and not reg.is_disabled("news_feed"):
+        register_provider(NewsFeedProvider())
     if not reg.has("null") and not reg.is_disabled("null"):
         register_provider(NullProvider())
     # Always attempt gated optional — demonstrates clean disable

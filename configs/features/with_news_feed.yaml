@@ -1,0 +1,32 @@
+# Env-first news_feed provider (NEWS_API_KEY → NewsAPI; else free RSS; else disable).
+# PIT join on available_time only. Research features — never live order path.
+name: with_news_feed
+version: "1.0.0"
+description: News polarity + count via news_feed provider
+
+providers:
+  - name: technical
+    required: true
+  - name: news_feed
+    required: false
+    safety_lag: 1m
+
+features:
+  - provider: technical
+    name: atr
+    params: { period: 14 }
+    alias: volatility_atr_14
+  - provider: technical
+    name: rsi
+    params: { period: 14 }
+    alias: momentum_rsi_14
+  - provider: news_feed
+    name: news_sentiment_polarity_last
+    null_policy: null
+  - provider: news_feed
+    name: news_count_60m
+    null_policy: zero
+
+validation:
+  fail_on_missing_required_provider: false
+  min_coverage_pct: 0.0

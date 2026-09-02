@@ -109,19 +109,27 @@ uv run fmtrader campaign continue <campaign_id>
 uv run fmtrader campaign status <campaign_id>
 ```
 
-### Agentic campaign (Ollama + frontier caps)
+### Agentic campaign (Ollama local-first; optional Claude/OpenAI overrides)
 
 ```bash
 # Keys in gitignored `.env` only — never commit. Rotate if pasted in chat.
-# OPENAI_API_KEY / ANTHROPIC_API_KEY + LLM_BUDGET_* = 8 (OpenAI $3 + Claude $5 soft caps)
+# Default campaign uses Ollama for all layers — see docs/LLM_ROUTING.md
+# Optional: OPENAI_API_KEY / ANTHROPIC_API_KEY + llm_routing overrides
+# Optional: LANGSMITH_API_KEY + LANGSMITH_TRACING=true (project FMEngine)
+
+ollama pull qwen2.5-coder:7b
+ollama pull qwen2.5:14b-instruct-q4_K_M
+# optional mid-size: ollama pull llama3.1:8b-instruct-q4_K_M
 
 make worker
 uv run fmtrader campaign new --config configs/campaigns/trial_agentic_ollama.yaml --temporal
 ```
 
-- **Local (hypothesize):** Ollama `qwen2.5-coder:7b` (14B only if memory allows; skipped during sweeps)
-- **Critical (critique/select/report):** Claude first (\$5), OpenAI `gpt-4o-mini` (\$3) — not weight fine-tuning
+- **Local (default all layers):** Ollama `qwen2.5-coder:7b` / `qwen2.5:14b-instruct-q4_K_M`
+- **Optional cloud:** set `llm_routing.critique.provider: anthropic` etc. in the campaign YAML
+- **Test models outside the app:** `ollama run qwen2.5-coder:7b` or OpenAI-compatible `http://127.0.0.1:11434/v1`
 - **Capital:** `initial_cash: 100000` reported in SUMMARY with trade P&L mean/median/mode/variance
+- **Progress UI:** http://localhost:3000/campaigns/<id>
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"

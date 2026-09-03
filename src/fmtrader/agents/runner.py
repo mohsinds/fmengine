@@ -120,6 +120,8 @@ def run_generation(
         f"Generation {state.generation}: explore strategies {state.config.strategies} "
         f"spaces={list(state.search_spaces)}"
     )
+    # Heavy local models allowed between sweeps; unload rules live in OllamaLLMClient
+    router.sweep_active = False
     raw = hypothesize(state, router)
     valid = validate_proposals(raw, state)
     if not valid:
@@ -140,18 +142,21 @@ def run_generation(
                 StrategyProposal.model_validate(x)
                 for x in resampled[: state.config.proposals_per_generation]
             ]
+    router.sweep_active = True
     results = fast_sweep(valid, state)
+    router.sweep_active = False
     scored = score_results(results, state)
     state.leaderboard.extend(scored)
     listed = shortlist(scored, state)
     fidelity = fidelity_eval(listed, state)
+    proposal_dicts = [p.model_dump() for p in valid]
     critique, decision, survivors, next_spaces, meta = critique_and_select(
-        state, router, scored, fidelity
+        state, router, scored, fidelity, proposals=proposal_dicts
     )
     write_journal(
         state,
         hypothesis=hypothesis,
-        proposals=[p.model_dump() for p in valid],
+        proposals=proposal_dicts,
         results=scored,
         survivors=survivors,
         next_search_space=next_spaces,

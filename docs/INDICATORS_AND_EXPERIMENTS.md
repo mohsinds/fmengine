@@ -40,7 +40,19 @@ Campaigns with `allow_ingredient_proposals: true` may propose tools from a **cur
 catalog** (fractional Kelly, conformal filter, vol regime, …). Unknown names are
 rejected. Volume/multi-asset tools are skipped on the current gold bid dataset.
 
-See `src/fmtrader/agents/ingredients.py` and `GET /api/ingredients`.
+Validated recipes are **applied** via `apply_ingredient_recipe` (sizing / stop /
+regime annotations on campaign state + scored rows). `conformal_filter` stays
+`deferred` until a fitted artifact exists — no fake signals. Hawkes / RMT stay
+rejected on bid-only data.
+
+See `src/fmtrader/agents/ingredients.py`, `apply_ingredients.py`, and
+`GET /api/ingredients`.
+
+## Agent memory ≠ fine-tuning
+
+`use_agent_memory: true` injects a retrieval summary from the trial registry and
+recent journals into hypothesize / critique / ingredient prompts. Lab chats do not
+update model weights. Ingredients are not free-form indicators — catalog only.
 
 ## Lab tip
 

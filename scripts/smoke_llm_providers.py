@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Live smoke test for configured LLM layers (Ollama / OpenAI / Anthropic).
+"""Live smoke test for configured LLM layers (Ollama / OpenAI / Anthropic / Cloud).
 
 Run from repo root:
   uv run python scripts/smoke_llm_providers.py
@@ -19,8 +19,9 @@ def main() -> int:
         OllamaLLMClient,
         OpenAILLMClient,
         default_router,
+        unload_ollama_model,
     )
-    from fmtrader.agents.routing import LLMRoutingConfig
+    from fmtrader.agents.routing import LLMRoutingConfig, large_agent_routing
     from fmtrader.config.settings import get_settings
 
     settings = get_settings()
@@ -29,6 +30,8 @@ def main() -> int:
 
     print("=== Settings ===")
     print(f"ollama_url={settings.ollama_url}")
+    print(f"ollama_cloud_url={settings.ollama_cloud_url}")
+    print(f"ollama_api_key_set={bool(settings.ollama_api_key)}")
     print(f"openai_key_set={bool(settings.openai_api_key)}")
     print(f"anthropic_key_set={bool(settings.anthropic_api_key)}")
     print(f"langsmith_tracing={settings.langsmith_tracing}")
@@ -36,6 +39,13 @@ def main() -> int:
     routing = LLMRoutingConfig()
     print("\n=== Default llm_routing ===")
     print(json.dumps({k: v.model_dump() for k, v in routing.as_map().items()}, indent=2))
+    print("\n=== large_agent_routing ===")
+    print(
+        json.dumps(
+            {k: v.model_dump() for k, v in large_agent_routing().as_map().items()},
+            indent=2,
+        )
+    )
 
     checks = [
         (
@@ -45,6 +55,34 @@ def main() -> int:
             ).complete(prompt, max_tokens=16),
         ),
     ]
+
+    # Large local models — soft if not pulled yet
+    for tag, model in (
+        ("ollama_gpt_oss_20b", "gpt-oss:20b"),
+        ("ollama_qwen38_27b", "qwen3.8:27b"),
+    ):
+        checks.append(
+            (
+                tag,
+                lambda m=model: OllamaLLMClient(
+                    model=m, base_url=settings.ollama_url
+                ).complete(prompt, max_tokens=16),
+            )
+        )
+
+    # kimi cloud — soft-fail if unsigned
+    checks.append(
+        (
+            "ollama_cloud_kimi",
+            lambda: OllamaLLMClient(
+                provider="ollama_cloud",
+                model="kimi-k2.6:cloud",
+                base_url=settings.ollama_cloud_url or settings.ollama_url,
+                api_key=settings.ollama_api_key or "",
+            ).complete(prompt, max_tokens=16),
+        )
+    )
+
     if settings.openai_api_key:
         checks.append(
             (
@@ -64,6 +102,8 @@ def main() -> int:
             )
         )
 
+    soft = {"ollama_gpt_oss_20b", "ollama_qwen38_27b", "ollama_cloud_kimi"}
+
     for name, fn in checks:
         print(f"\n=== {name} ===")
         try:
@@ -75,9 +115,15 @@ def main() -> int:
                 "completion_tokens": ct,
             }
             print(json.dumps(results[name], indent=2))
+            # Unload heavy locals between smokes
+            if "20b" in name or "27b" in name:
+                unload_ollama_model(
+                    "gpt-oss:20b" if "20b" in name else "qwen3.8:27b",
+                    base_url=settings.ollama_url,
+                )
         except Exception as exc:  # noqa: BLE001
-            results[name] = {"ok": False, "error": str(exc)}
-            print("FAIL:", exc)
+            results[name] = {"ok": False, "error": str(exc), "soft": name in soft}
+            print(("SOFT FAIL:" if name in soft else "FAIL:"), exc)
 
     print("\n=== default_router(stub=False, all-local routing) ===")
     try:
@@ -92,7 +138,7 @@ def main() -> int:
             ledger=CostLedger(),
             stub=False,
             campaign_id="smoke-llm-providers",
-            sweep_active=True,
+            sweep_active=False,
             routing=routing,
         )
         h = router.complete(
@@ -129,11 +175,18 @@ def main() -> int:
 
     print("\n=== SUMMARY ===")
     summary = {
-        k: {"ok": v.get("ok"), **({} if v.get("ok") else {"error": v.get("error")})}
+        k: {
+            "ok": v.get("ok"),
+            **(
+                {}
+                if v.get("ok")
+                else {"error": v.get("error"), "soft": v.get("soft", False)}
+            ),
+        }
         for k, v in results.items()
     }
     print(json.dumps(summary, indent=2))
-    # Require ollama + router; cloud optional
+    # Require ollama 7b + router; large/cloud optional (soft)
     required = ["ollama_7b", "router"]
     return 0 if all(results.get(k, {}).get("ok") for k in required) else 1
 

@@ -31,6 +31,8 @@ class StrategyProposal(BaseModel):
     rationale: str = ""
     generation: int = 0
     source: str = "agent"
+    ingredients: list[str] = Field(default_factory=list)
+    """Optional catalog ingredient names attached to this proposal."""
 
     @field_validator("strategy")
     @classmethod

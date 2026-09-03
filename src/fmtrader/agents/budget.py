@@ -51,6 +51,8 @@ class BudgetDecision:
 _COST_PER_MTOK: dict[str, tuple[float, float]] = {
     # (prompt, completion)
     "ollama": (0.0, 0.0),
+    "ollama_cloud": (0.0, 0.0),
+    "fallback": (0.0, 0.0),
     "anthropic": (3.0, 15.0),
     "openai": (2.5, 10.0),
     "gemini": (1.25, 5.0),

@@ -1,0 +1,46 @@
+# Large-model agentic campaign — gpt-oss:20b + qwen3.8:27b + kimi-k2.6 (cloud).
+# Raises Ollama memory vs the 8 GB default ceiling; keep workers low (2).
+# One heavy local model at a time (unload between purposes). No weight fine-tuning —
+# learning = trial registry + journal memory into prompts + curated ingredients.
+name: trial_agentic_large
+dataset_id: xauusd_1m_bid_2021-01-03_2026-08-30
+strategies:
+  - ema_cross
+  - rsi_mean_reversion
+  - macd_cross
+  - bollinger_breakout
+  - supertrend_trend
+space_path: configs/spaces/multi_family_dense.yaml
+max_generations: 20
+proposals_per_generation: 6
+shortlist_size: 3
+max_sweep_configs: 30
+workers: 2
+max_bars: 50000
+run_fidelity: false
+use_stub_llm: false
+refine_space: true
+allow_ingredient_proposals: true
+use_agent_memory: true
+seed: 1
+initial_cash: 100000
+cost_config: configs/costs/xauusd_cfd.yaml
+llm_routing:
+  hypothesize: { provider: ollama, model: gpt-oss:20b }
+  critique:
+    provider: ollama_cloud
+    model: kimi-k2.6:cloud
+    fallback: { provider: ollama, model: qwen3.8:27b }
+  select:
+    provider: ollama_cloud
+    model: kimi-k2.6:cloud
+    fallback: { provider: ollama, model: qwen3.8:27b }
+  report: { provider: ollama, model: qwen3.8:27b }
+  mutate: { provider: ollama, model: gpt-oss:20b }
+  summarize: { provider: ollama, model: qwen2.5-coder:7b }
+budget:
+  per_campaign_usd: 8.0
+  per_day_usd: 8.0
+  per_generation_usd: 1.0
+  openai_usd: 3.0
+  anthropic_usd: 5.0

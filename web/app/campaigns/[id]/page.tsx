@@ -16,6 +16,7 @@ type CampaignDetail = {
     use_stub_llm?: boolean;
   };
   active_ingredients?: string[];
+  ingredient_annotations?: Record<string, unknown>;
   budget?: {
     per_campaign_usd: number;
     spent_usd: number;
@@ -162,6 +163,12 @@ export default function CampaignDetailPage() {
                 ))}
               </p>
             )}
+            {!!detail.ingredient_annotations &&
+              Object.keys(detail.ingredient_annotations).length > 0 && (
+                <pre style={{ fontSize: 11, opacity: 0.85 }}>
+                  {JSON.stringify(detail.ingredient_annotations, null, 2)}
+                </pre>
+              )}
             {detail.last_error && <p className="err">{detail.last_error}</p>}
             <div className="row-actions">
               <button

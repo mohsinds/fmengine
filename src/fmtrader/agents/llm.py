@@ -61,22 +61,39 @@ class OllamaLLMClient:
     provider: str = "ollama"
     model: str = "qwen2.5-coder:7b"
     base_url: str = "http://localhost:11434"
+    api_key: str = ""
+    keep_alive: str | int | None = None
 
     def complete(self, prompt: str, *, max_tokens: int = 1024) -> tuple[str, int, int]:
         try:
             import httpx
         except ImportError as exc:
             raise AgentError("httpx required for Ollama client") from exc
+        # Unload other heavy models before loading this one
+        try:
+            from fmtrader.agents.routing import is_heavy_ollama_model
+
+            if is_heavy_ollama_model(self.model):
+                ensure_single_heavy_ollama(self.base_url, keep=self.model)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("ollama_unload_skipped", error=str(exc))
+        headers: dict[str, str] = {}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"num_predict": max_tokens},
+        }
+        if self.keep_alive is not None:
+            payload["keep_alive"] = self.keep_alive
         try:
             r = httpx.post(
                 f"{self.base_url.rstrip('/')}/api/generate",
-                json={
-                    "model": self.model,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {"num_predict": max_tokens},
-                },
-                timeout=180.0,
+                json=payload,
+                headers=headers or None,
+                timeout=300.0,
             )
             r.raise_for_status()
             data = r.json()
@@ -87,6 +104,69 @@ class OllamaLLMClient:
         except Exception as exc:
             log.warning("ollama_call_failed", error=str(exc), model=self.model)
             raise AgentError(f"Ollama call failed: {exc}") from exc
+
+
+def unload_ollama_model(model: str, *, base_url: str = "http://localhost:11434") -> None:
+    """Best-effort unload via keep_alive=0 generate."""
+    try:
+        import httpx
+    except ImportError:
+        return
+    try:
+        httpx.post(
+            f"{base_url.rstrip('/')}/api/generate",
+            json={"model": model, "prompt": " ", "stream": False, "keep_alive": 0},
+            timeout=30.0,
+        )
+        log.info("ollama_model_unloaded", model=model)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("ollama_unload_failed", model=model, error=str(exc))
+
+
+_last_heavy_model: str | None = None
+
+
+def ensure_single_heavy_ollama(base_url: str, *, keep: str) -> None:
+    """Unload previously tracked heavy model if different from ``keep``."""
+    global _last_heavy_model
+    from fmtrader.agents.routing import is_heavy_ollama_model
+
+    if _last_heavy_model and _last_heavy_model != keep and is_heavy_ollama_model(_last_heavy_model):
+        unload_ollama_model(_last_heavy_model, base_url=base_url)
+    if is_heavy_ollama_model(keep):
+        _last_heavy_model = keep
+
+
+@dataclass
+class FallbackLLMClient:
+    """Try primary client; on failure use fallback (e.g. cloud → local)."""
+
+    primary: LLMClient
+    fallback: LLMClient
+    provider: str = "fallback"
+    model: str = "fallback"
+
+    def __post_init__(self) -> None:
+        self.provider = self.primary.provider
+        self.model = self.primary.model
+
+    def complete(self, prompt: str, *, max_tokens: int = 1024) -> tuple[str, int, int]:
+        try:
+            text, pt, ct = self.primary.complete(prompt, max_tokens=max_tokens)
+            self.provider = self.primary.provider
+            self.model = self.primary.model
+            return text, pt, ct
+        except Exception as exc:
+            log.warning(
+                "llm_primary_failed_using_fallback",
+                primary=f"{self.primary.provider}:{self.primary.model}",
+                fallback=f"{self.fallback.provider}:{self.fallback.model}",
+                error=str(exc),
+            )
+            text, pt, ct = self.fallback.complete(prompt, max_tokens=max_tokens)
+            self.provider = self.fallback.provider
+            self.model = self.fallback.model
+            return text, pt, ct
 
 
 @dataclass
@@ -287,8 +367,12 @@ class LLMRouter:
             return "F"
         if purpose in _FRONTIER_PURPOSES and client is None:
             return "F"
-        if purpose in _FRONTIER_PURPOSES and client is not None and client.provider == "ollama":
-            # Local "frontier" layer — still tagged F for journal clarity but $0 cost
+        if purpose in _FRONTIER_PURPOSES and client is not None and client.provider in {
+            "ollama",
+            "ollama_cloud",
+            "fallback",
+        }:
+            # Local/cloud Ollama "frontier" — tagged F for journal clarity; $0 ledger
             return "F"
         if purpose in _FRONTIER_PURPOSES:
             return "F"
@@ -314,13 +398,12 @@ class LLMRouter:
     def _client_for_purpose(self, purpose: Purpose) -> LLMClient:
         if purpose in self.purpose_clients:
             client = self.purpose_clients[purpose]
-            # Heavy Ollama models during sweep → fall back to 7b local
-            if (
-                self.sweep_active
-                and client.provider == "ollama"
-                and ("14b" in client.model.lower() or "70b" in client.model.lower())
-            ):
-                log.info("llm_skip_heavy_ollama_during_sweep", model=client.model)
+            # Heavy local Ollama models during vectorbt worker storm → 7b
+            if self.sweep_active and _client_is_heavy_local(client):
+                log.info(
+                    "llm_skip_heavy_ollama_during_sweep",
+                    model=getattr(client, "model", "?"),
+                )
                 return self.local
             return client
         if purpose in _FRONTIER_PURPOSES:
@@ -437,7 +520,18 @@ def build_client(
     settings = settings or get_settings()
     p = provider.lower()
     if p == "ollama":
-        return OllamaLLMClient(model=model, base_url=settings.ollama_url)
+        return OllamaLLMClient(
+            provider="ollama",
+            model=model,
+            base_url=settings.ollama_url,
+        )
+    if p == "ollama_cloud":
+        return OllamaLLMClient(
+            provider="ollama_cloud",
+            model=model,
+            base_url=settings.ollama_cloud_url or settings.ollama_url,
+            api_key=settings.ollama_api_key or "",
+        )
     if p == "openai":
         if not settings.openai_api_key:
             raise AgentError("OPENAI_API_KEY not configured for openai layer")
@@ -469,6 +563,53 @@ def build_client(
     raise AgentError(f"Unknown LLM provider: {provider}")
 
 
+def build_routed_client(
+    route: Any,
+    *,
+    settings: Any | None = None,
+    ledger: CostLedger | None = None,
+    campaign_id: str = "",
+    caps: BudgetCaps | None = None,
+) -> LLMClient:
+    """Build client for a LayerRoute, wrapping optional fallback."""
+    primary = build_client(
+        route.provider,
+        route.model,
+        settings=settings,
+        ledger=ledger,
+        campaign_id=campaign_id,
+        caps=caps,
+    )
+    fb = getattr(route, "fallback", None)
+    if fb is None:
+        return primary
+    try:
+        secondary = build_client(
+            fb.provider,
+            fb.model,
+            settings=settings,
+            ledger=ledger,
+            campaign_id=campaign_id,
+            caps=caps,
+        )
+    except AgentError:
+        return primary
+    return FallbackLLMClient(primary=primary, fallback=secondary)
+
+
+def _client_is_heavy_local(client: LLMClient) -> bool:
+    from fmtrader.agents.routing import is_heavy_ollama_model
+
+    if isinstance(client, FallbackLLMClient):
+        return _client_is_heavy_local(client.primary)
+    if client.provider not in {"ollama", "ollama_cloud"}:
+        return False
+    # Cloud models are remote — do not treat as local VRAM residents
+    if client.provider == "ollama_cloud":
+        return False
+    return is_heavy_ollama_model(client.model)
+
+
 def default_router(
     *,
     caps: BudgetCaps | None = None,
@@ -492,9 +633,8 @@ def default_router(
     purpose_clients: dict[str, LLMClient] = {}
     for purpose, route in cfg.as_map().items():
         try:
-            purpose_clients[purpose] = build_client(
-                route.provider,
-                route.model,
+            purpose_clients[purpose] = build_routed_client(
+                route,
                 settings=settings,
                 ledger=ledger,
                 campaign_id=campaign_id,
@@ -516,6 +656,9 @@ def default_router(
     local = purpose_clients.get("hypothesize") or OllamaLLMClient(
         model="qwen2.5-coder:7b", base_url=settings.ollama_url
     )
+    # Prefer a compact unload/fallback model when hypothesize is a heavy local
+    if _client_is_heavy_local(local):
+        local = OllamaLLMClient(model="qwen2.5-coder:7b", base_url=settings.ollama_url)
     local_14b = OllamaLLMClient(
         model="qwen2.5:14b-instruct-q4_K_M", base_url=settings.ollama_url
     )

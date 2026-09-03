@@ -93,15 +93,37 @@ def _sample_multi(
     return out[:n]
 
 
+def _agent_memory_block(state: CampaignState) -> str:
+    if not state.config.use_agent_memory:
+        return ""
+    from fmtrader.agents.memory import build_agent_memory
+
+    try:
+        return build_agent_memory(
+            dataset_id=state.config.dataset_id,
+            strategies=list(state.config.strategies),
+            decision_trace=list(state.decision_trace),
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.warning("agent_memory_build_failed", error=str(exc))
+        return ""
+
+
 def hypothesize(state: CampaignState, router: LLMRouter) -> list[dict[str, Any]]:
     """Propose N candidate configs. Uses LLM when available; falls back to grid sample."""
     spaces = ensure_spaces(state)
     strategies = list(state.config.strategies)
     n = state.config.proposals_per_generation
+    memory = _agent_memory_block(state)
+    memory_section = f"\n\n## Prior trial memory\n{memory}\n" if memory else ""
     prompt = (
         f"Propose {n} JSON objects across strategies {strategies} "
         f"with params from spaces {json.dumps(spaces)}. "
-        'Return a JSON array of {"strategy","params","rationale"}.'
+        'Return a JSON array of {"strategy","params","rationale"} '
+        'and optionally "ingredients" (catalog names only).'
+        f"{memory_section}"
+        "Use memory to prefer strong regions and avoid weak duplicates; "
+        "do not invent indicators outside the campaign strategies."
     )
     try:
         result = router.complete(
@@ -319,16 +341,25 @@ def critique_and_select(
     router: LLMRouter,
     results: list[dict[str, Any]],
     shortlisted: list[dict[str, Any]],
+    *,
+    proposals: list[dict[str, Any]] | None = None,
 ) -> tuple[str, str, list[dict[str, Any]], dict[str, dict[str, list[Any]]], dict[str, Any]]:
+    from fmtrader.agents.apply_ingredients import (
+        apply_ingredient_recipe,
+        merge_proposal_ingredients,
+    )
     from fmtrader.agents.ingredients import (
         list_ingredients,
         parse_ingredients_from_llm_text,
         validate_ingredient_recipe,
     )
 
+    memory = _agent_memory_block(state)
+    memory_section = f"\nPrior trial memory (short):\n{memory[:1500]}\n" if memory else ""
     prompt = (
         f"Critique these shortlist results for campaign {state.campaign_id} gen {state.generation}: "
         f"{json.dumps(shortlisted)[:2000]}. Suggest next search space refinement as JSON."
+        f"{memory_section}"
     )
     critique = "(stub critique)"
     decision = "Keep top survivors; shrink search space around best params."
@@ -354,6 +385,7 @@ def critique_and_select(
         select_prompt = (
             f"Select up to {state.config.shortlist_size} survivors from "
             f"{json.dumps(shortlisted)[:1500]}. Reply with a short rationale."
+            f"{memory_section}"
         )
         sel = router.complete(
             select_prompt,
@@ -382,6 +414,8 @@ def critique_and_select(
                 f"Choose only from: {allowed}. Prefer vol_regime_quantile, conformal_filter, "
                 "fractional_kelly, fixed_pct_risk, vol_stop when data allows. "
                 f"Shortlist context: {json.dumps(shortlisted)[:800]}"
+                f"{memory_section}"
+                "Use memory of which ingredients co-occurred with better trials."
             )
             ing_out = router.complete(
                 ing_prompt,
@@ -414,7 +448,17 @@ def critique_and_select(
                 multi_asset=False,
             )
             ingredient_recipe = validated.recipe
-            state.active_ingredients = list(validated.accepted)
+            if proposals:
+                ingredient_recipe = merge_proposal_ingredients(
+                    ingredient_recipe,
+                    proposals,
+                    has_volume=has_volume,
+                )
+            ingredient_recipe = apply_ingredient_recipe(
+                state,
+                ingredient_recipe,
+                results=results,
+            )
         except Exception as exc:
             log.warning("ingredient_propose_failed", error=str(exc))
             ingredient_recipe = {
@@ -499,6 +543,7 @@ def write_journal(
         "ingredients": ingredients or {},
         "llm": llm_meta or {},
         "next_search_space": next_search_space,
+        "ingredient_annotations": dict(state.ingredient_annotations or {}),
     }
     # Replace same-generation entry if re-run
     state.decision_trace = [

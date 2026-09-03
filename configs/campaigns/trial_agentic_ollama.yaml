@@ -20,6 +20,7 @@ run_fidelity: false
 use_stub_llm: false
 refine_space: true
 allow_ingredient_proposals: true
+use_agent_memory: true
 seed: 1
 initial_cash: 100000
 cost_config: configs/costs/xauusd_cfd.yaml

@@ -36,7 +36,7 @@ def _router_for(state: CampaignState) -> LLMRouter:
         ledger=ledger,
         stub=False,
         campaign_id=state.campaign_id,
-        sweep_active=True,
+        sweep_active=False,
         routing=state.config.llm_routing,
     )
 

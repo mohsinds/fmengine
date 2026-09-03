@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="redis://localhost:6379/0")
     mlflow_url: str = Field(default="http://localhost:5001")
     ollama_url: str = Field(default="http://localhost:11434")
+    ollama_cloud_url: str = Field(
+        default="http://localhost:11434",
+        description="Ollama Cloud HTTP base (same host once signed in; models by name)",
+    )
+    ollama_api_key: str = Field(
+        default="",
+        description="Optional Ollama Cloud API key (OLLAMA_API_KEY)",
+    )
 
     # LLM budget caps (USD) — Phase 7 governor; empty env → 0 (local-only)
     llm_budget_per_campaign_usd: float = Field(default=0.0)

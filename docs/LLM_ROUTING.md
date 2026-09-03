@@ -5,18 +5,32 @@ Campaign agents call LLMs by **purpose** (workflow layer). Each purpose maps to 
 
 ## Purposes
 
-| Purpose | Typical use | Default (all-local) |
-|---------|-------------|---------------------|
-| `hypothesize` | Propose strategy/param JSON | `ollama` / `qwen2.5-coder:7b` |
-| `critique` | Review shortlist | `ollama` / `qwen2.5:14b-instruct-q4_K_M` |
-| `select` | Survivor rationale | same 14B |
-| `report` | Ingredient recipe / summary | `qwen2.5-coder:7b` |
-| `mutate` / `summarize` | Reserved | 7B |
+| Purpose | Typical use | Compact local | Large research profile |
+|---------|-------------|----------------|------------------------|
+| `hypothesize` | Propose strategy/param JSON | `qwen2.5-coder:7b` | `gpt-oss:20b` |
+| `critique` | Review shortlist | `qwen2.5:14b-instruct-q4_K_M` | `kimi-k2.6:cloud` → `qwen3.8:27b` |
+| `select` | Survivor rationale | same 14B | same kimi / qwen fallback |
+| `report` | Ingredient recipe / summary | 7B | `qwen3.8:27b` |
+| `mutate` / `summarize` | Reserved | 7B | gpt-oss / 7B |
 
-During active sweeps, 14B+ Ollama models are forced down to the 7B local client
-(memory budget).
+During an active vectorbt sweep (`router.sweep_active=True`), heavy local Ollama
+models are forced down to the compact 7B client so workers keep RAM. LLM calls
+around hypothesize / critique / ingredients run with `sweep_active=False` and
+unload between heavy locals (`unload_ollama_model` / `keep_alive=0`).
 
-## Switching layers
+## Providers
+
+`ollama` | `ollama_cloud` | `openai` | `anthropic` | `stub`
+
+- **ollama** — local Metal HTTP (`OLLAMA_URL`, default `http://localhost:11434`)
+- **ollama_cloud** — same generate API; `OLLAMA_CLOUD_URL` (defaults to local host
+  once `ollama signin` / cloud enabled). Optional `OLLAMA_API_KEY`. Layers may
+  declare `fallback:` to a local model when cloud auth is missing.
+- Paid keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` in `.env`
+
+Budget caps still apply to paid providers. Ollama (local + cloud ledger) is **$0**.
+
+## Compact campaign
 
 ```yaml
 # configs/campaigns/trial_agentic_ollama.yaml
@@ -26,66 +40,56 @@ llm_routing:
   critique: { provider: ollama, model: qwen2.5:14b-instruct-q4_K_M }
   select: { provider: ollama, model: qwen2.5:14b-instruct-q4_K_M }
   report: { provider: ollama, model: qwen2.5-coder:7b }
-  # Cloud overrides:
-  # critique: { provider: anthropic, model: claude-sonnet-4-5-20250929 }
-  # report: { provider: openai, model: gpt-4o-mini }
 ```
 
-Providers: `ollama` | `openai` | `anthropic` | `stub`.
-Keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` in `.env`. Ollama URL: `OLLAMA_URL`
-(default `http://localhost:11434`).
+## Large research profile
 
-Budget caps in YAML still apply to paid providers (`openai_usd`, `anthropic_usd`,
-`per_campaign_usd`, …). Ollama is ledgered at **$0**.
+```yaml
+# configs/campaigns/trial_agentic_large.yaml
+workers: 2
+use_agent_memory: true
+allow_ingredient_proposals: true
+llm_routing:
+  hypothesize: { provider: ollama, model: gpt-oss:20b }
+  critique:
+    provider: ollama_cloud
+    model: kimi-k2.6:cloud
+    fallback: { provider: ollama, model: qwen3.8:27b }
+  select:
+    provider: ollama_cloud
+    model: kimi-k2.6:cloud
+    fallback: { provider: ollama, model: qwen3.8:27b }
+  report: { provider: ollama, model: qwen3.8:27b }
+```
+
+On 24 GB unified memory, treat 20B/27B as **one resident at a time**. Raise
+`MEMORY_BUDGET_OLLAMA_GB` (e.g. 18) for this profile; keep Docker workers low.
 
 ## Download models
 
 ```bash
+# Compact defaults
 ollama pull qwen2.5-coder:7b
 ollama pull qwen2.5:14b-instruct-q4_K_M
-ollama pull llama3.1:8b-instruct-q4_K_M   # optional mid-size frontier
-ollama pull qwen2.5:3b                    # optional light report tier
+
+# Large research profile
+ollama pull gpt-oss:20b
+ollama pull qwen3.8:27b
+# kimi-k2.6:cloud via Ollama Cloud (after `ollama signin` / cloud enabled)
+ollama pull kimi-k2.6:cloud
 ```
 
-Only one large model should be resident at a time on a 24 GB machine
-(Ollama budget ≤ 8 GB).
+## Agent memory (not fine-tuning)
 
-## Test outside fmengine
+With `use_agent_memory: true`, hypothesize / critique / ingredient prompts receive a
+retrieval block from `TrialRegistry` + journal traces (`build_agent_memory`). Weights
+are never updated. Every proposed config still passes `validate_proposal` + registry
+dedupe (multiple-testing intact).
 
-```bash
-# Interactive chat
-ollama run qwen2.5-coder:7b
-ollama run qwen2.5:14b-instruct-q4_K_M
-
-# One-shot HTTP
-curl http://127.0.0.1:11434/api/generate -d '{
-  "model": "qwen2.5-coder:7b",
-  "prompt": "Reply with one word: pong",
-  "stream": false
-}'
-
-# OpenAI-compatible endpoint (Open WebUI, Continue, curl, etc.)
-curl http://127.0.0.1:11434/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"qwen2.5-coder:7b","messages":[{"role":"user","content":"ping"}]}'
-```
-
-List local models: `ollama list` or `curl http://127.0.0.1:11434/api/tags`.
-
-## Smoke inside the repo
+## Smoke
 
 ```bash
 uv run python scripts/smoke_llm_providers.py
 ```
 
-## LangSmith (optional)
-
-Set in `.env` (never commit keys):
-
-```
-LANGSMITH_API_KEY=
-LANGSMITH_PROJECT=FMEngine
-LANGSMITH_TRACING=true
-```
-
-When enabled, each `LLMRouter.complete` emits a LangSmith span.
+Large tags are soft-checked: missing `kimi-k2.6:cloud` auth fails that check only.

@@ -47,6 +47,9 @@ class CampaignConfig(BaseModel):
     allow_ingredient_proposals: bool = True
     """When True, critique/select may propose curated experiment ingredients."""
 
+    use_agent_memory: bool = True
+    """Inject trial-registry + journal retrieval into hypothesize/critique/ingredient prompts."""
+
     @model_validator(mode="after")
     def _normalize_strategies(self) -> CampaignConfig:
         if not self.strategies:
@@ -110,6 +113,9 @@ class CampaignState:
     active_ingredients: list[str] = field(default_factory=list)
     """Accepted ingredient names for the latest generation."""
 
+    ingredient_annotations: dict[str, Any] = field(default_factory=dict)
+    """Applied sizing/regime/stop annotations from the latest ingredient recipe."""
+
     decision_trace: list[dict[str, Any]] = field(default_factory=list)
     """Structured per-generation decisions for the progress UI / APIs."""
 
@@ -128,6 +134,7 @@ class CampaignState:
             "pause_requested": self.pause_requested,
             "abort_requested": self.abort_requested,
             "active_ingredients": self.active_ingredients,
+            "ingredient_annotations": self.ingredient_annotations,
             "decision_trace": self.decision_trace,
             "budget_override": (
                 None
@@ -168,6 +175,7 @@ class CampaignState:
             abort_requested=bool(data.get("abort_requested", False)),
             budget_override=BudgetCaps(**bo) if isinstance(bo, dict) else None,
             active_ingredients=list(data.get("active_ingredients") or []),
+            ingredient_annotations=dict(data.get("ingredient_annotations") or {}),
             decision_trace=list(data.get("decision_trace") or []),
         )
 

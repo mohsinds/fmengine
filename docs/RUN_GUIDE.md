@@ -125,8 +125,26 @@ make worker
 uv run fmtrader campaign new --config configs/campaigns/trial_agentic_ollama.yaml --temporal
 ```
 
+### Large-model agentic campaign (20B / 27B / kimi cloud)
+
+```bash
+ollama pull gpt-oss:20b
+ollama pull qwen3.8:27b
+# Cloud critique/select (optional; falls back to qwen3.8:27b if unsigned)
+ollama signin   # once
+ollama pull kimi-k2.6:cloud
+
+# Raise Ollama budget while this profile runs (24 GB machine; one heavy at a time)
+# e.g. MEMORY_BUDGET_OLLAMA_GB=18 in .env — never co-load 20B + 27B
+# Keep workers: 2 in trial_agentic_large.yaml
+
+make worker
+uv run fmtrader campaign new --config configs/campaigns/trial_agentic_large.yaml --temporal
+```
+
 - **Local (default all layers):** Ollama `qwen2.5-coder:7b` / `qwen2.5:14b-instruct-q4_K_M`
-- **Optional cloud:** set `llm_routing.critique.provider: anthropic` etc. in the campaign YAML
+- **Large profile:** `gpt-oss:20b` hypothesize, `kimi-k2.6:cloud` critique/select with
+  `qwen3.8:27b` fallback, `qwen3.8:27b` ingredient report; `use_agent_memory: true`- **Optional cloud:** set `llm_routing.critique.provider: anthropic` etc. in the campaign YAML
 - **Test models outside the app:** `ollama run qwen2.5-coder:7b` or OpenAI-compatible `http://127.0.0.1:11434/v1`
 - **Capital:** `initial_cash: 100000` reported in SUMMARY with trade P&L mean/median/mode/variance
 - **Progress UI:** http://localhost:3000/campaigns/<id>
